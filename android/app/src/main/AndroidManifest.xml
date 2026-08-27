@@ -22,6 +22,19 @@
         android:theme="@style/Theme.Athkar"
         tools:targetApi="31">
 
+        <!-- On-demand WorkManager initialization (Hilt worker factory via Configuration.Provider);
+             disable the default auto-initializer so it doesn't run twice. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -39,6 +52,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="athkar.app" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="links.athkar.app" />
             </intent-filter>
             <intent-filter>
@@ -48,14 +66,6 @@
                 <data android:scheme="athkar" android:host="adhkar" />
             </intent-filter>
         </activity>
-
-        <service
-            android:name=".sync.AthkarSyncWorker"
-            android:exported="false" />
-
-        <receiver
-            android:name=".notifications.ReminderScheduler"
-            android:exported="false" />
     </application>
 
 </manifest>

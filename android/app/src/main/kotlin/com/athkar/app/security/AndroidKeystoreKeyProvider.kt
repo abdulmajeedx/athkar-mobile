@@ -37,20 +37,35 @@ class AndroidKeystoreKeyProvider @Inject constructor() : DbKeyProvider {
     }
 
     private fun createKey(): SecretKey {
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .setUnlockedDeviceRequired(true)    // key unavailable while locked (pin/biometric gate)
-                .setIsStrongBoxBacked(true)         // use StrongBox where available; ignored if absent
-                .build()
+        val attempts = listOf(
+            true to true,   // StrongBox + require unlocked device
+            false to true,  // software keystore + require unlocked device
+            false to false, // software keystore, no device-unlock requirement
         )
-        return generator.generateKey()
+        var lastError: Exception? = null
+        for ((strongBox, unlockRequired) in attempts) {
+            try {
+                val spec = KeyGenParameterSpec.Builder(
+                    ALIAS,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .apply { if (unlockRequired) setUnlockedDeviceRequired(true) }
+                    .apply { if (strongBox) setIsStrongBoxBacked(true) }
+                    .build()
+                val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+                generator.init(spec)
+                return generator.generateKey()
+            } catch (e: Exception) {
+                // StrongBoxUnavailableException / IllegalStateException (no lock screen) /
+                // etc. can be thrown at generation; fall back to a weaker-but-working key so the
+                // app never crashes on launch.
+                lastError = e
+            }
+        }
+        throw IllegalStateException("Unable to provision AES keystore key", lastError)
     }
 
     fun wipeDbKey() {

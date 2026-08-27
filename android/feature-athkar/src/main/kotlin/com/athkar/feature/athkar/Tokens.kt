@@ -52,6 +52,6 @@ object Tokens {
 
 /** Minimal theme hook so screens stay token-driven. */
 @Composable
-fun ahkarTokensTheme(content: @Composable () -> Unit) {
+fun AhkarTokensTheme(content: @Composable () -> Unit) {
     MaterialTheme(content = content)
 }

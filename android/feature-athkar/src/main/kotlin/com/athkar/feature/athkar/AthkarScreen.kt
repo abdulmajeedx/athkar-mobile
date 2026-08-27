@@ -92,7 +92,7 @@ private fun AthkarScreen(
 private fun OfflineBanner(lastSyncAt: Long?) {
     Surface(color = Tokens.offlineAmber) {
         Text(
-            text = "وضع عدم الاتصال — آخر مزامنة: ${lastSyncAt?.let { java.text.SimpleDateFormat("HH:mm").format(java.util.Date(it)) } ?: "—"}",
+            text = "وضع عدم الاتصال — آخر مزامنة: ${lastSyncAt?.let { java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(it)) } ?: "—"}",
             color = Tokens.onPrimary,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
