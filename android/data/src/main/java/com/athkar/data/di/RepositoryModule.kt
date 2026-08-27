@@ -1,0 +1,42 @@
+package com.athkar.data.di
+
+import com.athkar.data.repository.AdhkarRepositoryImpl
+import com.athkar.data.repository.SettingsRepositoryImpl
+import com.athkar.data.repository.SyncStateRepositoryImpl
+import com.athkar.domain.AdhkarRepository
+import com.athkar.domain.Connectivity
+import com.athkar.domain.SettingsRepository
+import com.athkar.domain.SyncStateRepository
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class RepositoryModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindAdhkarRepository(impl: AdhkarRepositoryImpl): AdhkarRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSyncStateRepository(impl: SyncStateRepositoryImpl): SyncStateRepository
+
+    companion object {
+        @Provides
+        @Singleton
+        fun provideInitialConnectivity(): Connectivity = Connectivity.ONLINE
+
+        @Provides
+        @Singleton
+        fun provideClock(): () -> Long = System::currentTimeMillis
+    }
+}

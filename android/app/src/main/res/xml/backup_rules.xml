@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android full backup rules: exclude the encrypted database and any cache that holds decrypted
+  content, so no sensitive user data leaks through cloud backup (STRIDE surface S3 — backup/cloud
+  leakage). The DB is encrypted, but we still exclude it defensively and exclude shared prefs that
+  must never be backed up.
+-->
+<full-backup-content>
+    <exclude domain="database" path="athkar.db" />
+    <exclude domain="database" path="athkar.db-wal" />
+    <exclude domain="database" path="athkar.db-shm" />
+    <exclude domain="sharedpref" path="athkar_session.xml" />
+    <exclude domain="file" path="cache/" />
+</full-backup-content>

@@ -1,24 +1,18 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    kotlin("jvm") version "2.2.0"
+    alias(libs.plugins.kotlin.jvm)
     jacoco
 }
 
 group = "com.athkar"
 version = "1.0.0"
 
-repositories {
-    mavenCentral()
-    google()
-}
-
 dependencies {
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-    testImplementation(kotlin("test"))
-    testImplementation(kotlin("test-junit5"))
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    api(libs.kotlinx.coroutines.core)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 kotlin {

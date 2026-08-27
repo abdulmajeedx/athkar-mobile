@@ -28,15 +28,24 @@ platform-free Kotlin core that handles conflict-free multi-device sync.
 | Area | State |
 |------|-------|
 | `android/core` — HLC, CRDT, sync policy (pure Kotlin/JVM) | **Implemented + tested** (22 tests, 0 failures; ~88% line coverage) |
+| `android/app` — Compose shell, Hilt DI, Keystore session | **Implemented** — builds a running debug APK |
+| `android/data` — Room + SQLCipher, DAOs, repositories | **Implemented** (13 files) |
+| `android/sync` — Ktor client, DTOs, WorkManager worker | **Implemented** (5 files) |
+| `android/domain` — repository ports, merge use case | **Implemented** (2 files) |
+| `android/feature-athkar` — dhikr list screen + ViewModel | **Implemented** (3 files) |
+| `android/feature-prayer-times` | Module wired, **UI not written** — the app shows a placeholder |
 | `contracts/openapi` — API contract | **Complete** (10 endpoints) |
 | `docs/` — architecture, DB, security, operations | **Complete** (~3,300 lines) |
-| `android/app`, `data`, `sync`, `feature-*` | Scaffolded — directories reserved, not yet implemented |
 | `ios/Athkar/*` | Scaffolded — directories reserved, not yet implemented |
 | `backend/` | Scaffolded — contract-first, implementation pending |
 
-This repository is **design-and-core-first**: the hard, correctness-critical part (distributed
-merge semantics) is written and proven by tests, and the platform shells are specified in `docs/`
-before being built.
+The Android app **assembles and runs**: `assembleDebug` produces a ~34 MB debug APK
+(`com.athkar.app.debug`, v1.0.0/1000, minSdk 26, targetSdk 35). Prayer times are still a
+placeholder screen, and iOS and the backend remain specification-only.
+
+**Test coverage is currently uneven and worth knowing about:** all 22 tests live in `core`. The
+`app`, `data`, `sync`, `domain`, and `feature-*` modules have `src/test` and `src/androidTest`
+directories wired into the build but **no test files yet**.
 
 ---
 
@@ -53,12 +62,21 @@ athkar/
 │   │       ├── crdt/UuidV7.kt            RFC 9562 time-ordered ids
 │   │       ├── domain/AdhkarReminder.kt  shared domain entity + field conflict resolution
 │   │       └── sync/                     DeltaCursor, Outbox, SyncPolicy (backoff/tombstone/replica)
-│   ├── app/                     composition root: DI, navigation, platform glue
+│   ├── app/                     composition root — Compose shell, Hilt, Keystore session
+│   │       MainActivity.kt, AthkarApplication.kt, security/{SessionManager,
+│   │       AndroidKeystoreKeyProvider}.kt, di/AppSecurityModule.kt
 │   ├── domain/                  use-case orchestration (pure)
-│   ├── data/                    Room persistence + network drivers
-│   ├── sync/                    background sync worker / scheduler
-│   ├── feature-athkar/          dhikr + adhkar reminders UI
-│   └── feature-prayer-times/    prayer times + next-prayer countdown UI
+│   │       AdhkarRepository.kt (port), MergeRemoteUse.kt
+│   ├── data/                    Room + SQLCipher persistence
+│   │       db/{AppDatabase,AthkarDbFactory}.kt, db/dao/{Adhkar,Sync,Notification}Dao.kt,
+│   │       db/entity/*, repository/*Impl.kt, di/{Database,Repository}Module.kt
+│   ├── sync/                    Ktor client + WorkManager background sync
+│   │       network/{SyncApi,NetworkModule}.kt, dto/SyncDtos.kt, worker/AthkarSyncWorker.kt
+│   ├── feature-athkar/          dhikr UI — AthkarScreen.kt, AthkarViewModel.kt, Tokens.kt
+│   ├── feature-prayer-times/    module wired, UI not yet written
+│   ├── build.gradle.kts         root build + enforcePureDomainLayers check
+│   ├── settings.gradle.kts      includes all 7 modules
+│   └── gradle/libs.versions.toml   version catalog (single source for all dependencies)
 ├── ios/Athkar/                  Domain, Data/{GRDB,Sync}, Presentation, Security, Notifications, DeepLinks
 ├── backend/                     server implementation (contract-first)
 ├── contracts/openapi/athkar.yaml   single source of truth for both clients
@@ -80,10 +98,13 @@ Three layers, with the dependency rule **enforced by the build**, not by convent
 
 Four accepted ADRs (full rationale in [docs/architecture/architecture.md](docs/architecture/architecture.md)):
 
-- **ADR-01 — Three-layer separation.** Domain may never import UI or platform packages. Enforced
-  three ways: Gradle module boundaries (the packages aren't on the classpath, so it *cannot*
-  compile), a custom Detekt `ApiDetektRule` that fails the build on denylisted imports, and an
-  `archTest` bytecode suite that catches transitive leakage.
+- **ADR-01 — Three-layer separation.** Domain may never import UI or platform packages.
+  **Currently enforced two ways:** Gradle module boundaries (`core` and `domain` declare no Android
+  dependency, so those packages aren't on the classpath and *cannot* compile), plus an
+  `enforcePureDomainLayers` Gradle task in [`android/build.gradle.kts`](android/build.gradle.kts)
+  that scans `:core` and `:domain` sources for denylisted imports and fails `check` on any hit.
+  The ADR additionally specifies a Detekt `ApiDetektRule` and an `archTest` bytecode suite for
+  transitive leakage — **neither is wired up yet**; the current task is a textual import scan.
 - **ADR-02 — Unidirectional data flow.** `UI event → Intent → Reducer/UseCase → immutable State → render`.
   Intents are a `sealed interface`, so an unhandled UI event fails to compile.
 - **ADR-03 — Local DB is the single source of truth.** Every screen reads a reactive local Flow
@@ -188,20 +209,35 @@ breaking change.
 
 ## Building & testing
 
-The `core` module is a standalone Kotlin/JVM project (Kotlin 2.2.0, JVM target 17).
+`android/` is a 7-module Gradle build (AGP 8.7.3, Kotlin 2.2.0, JVM target 17, compileSdk 35).
+All dependency versions are pinned in
+[`android/gradle/libs.versions.toml`](android/gradle/libs.versions.toml).
 
-> **Note:** no Gradle wrapper is committed yet — you need **Gradle 8.10+** on your `PATH`.
-> Adding `gradlew` is tracked as a known gap below.
+> **Note:** `android/gradle/wrapper/` is empty — no `gradlew`, `gradle-wrapper.jar`, or
+> `gradle-wrapper.properties` is committed, so you need **Gradle 8.10+** on your `PATH` and a
+> local Android SDK. Adding the wrapper is tracked as a known gap below.
 
 ```bash
-cd android/core
+cd android
 
-gradle test              # JUnit 5 unit + property tests
-gradle jacocoTestReport  # coverage → build/reports/jacoco/test/html/index.html
-gradle build             # compile + test + jar
+gradle assembleDebug     # → app/build/outputs/apk/debug/app-debug.apk
+gradle :core:test        # JUnit 5 unit + property tests
+gradle :core:jacocoTestReport   # coverage → core/build/reports/jacoco/test/html/index.html
+gradle check             # includes enforcePureDomainLayers (layer-purity gate)
 ```
 
-Test suites:
+Install the debug build on a connected device:
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+APKs are **not committed** — `.gitignore` excludes `build/` and `*.apk`. Build locally with the
+command above.
+
+### Test suites
+
+All tests currently live in `core`:
 
 | Suite | Covers |
 |-------|--------|
@@ -209,7 +245,27 @@ Test suites:
 | `ConflictResolverPropertyTest` | Per-field entity merge convergence in random delivery order |
 | `OutboxAndCursorTest` | Outbox state machine, backoff schedule, dead-lettering, cursor advancement |
 
-Last recorded run: **22 tests, 0 failures**, ~88% line / ~80% instruction coverage.
+Last recorded run: **22 tests, 0 failures**, ~88% line / ~80% instruction coverage. The Android
+modules have no tests yet — see Known gaps.
+
+---
+
+## Android stack
+
+| Concern | Choice |
+|---------|--------|
+| UI | Jetpack Compose (BOM 2024.12.01), Material 3, Navigation Compose |
+| DI | Hilt 2.57.1 (KSP) |
+| Persistence | Room 2.7.0 over **SQLCipher** (AES-256), WAL journal mode |
+| Networking | Ktor 3.0.1 client (OkHttp engine, auth, content negotiation, kotlinx-serialization) |
+| Background work | WorkManager 2.10.0 — `AthkarSyncWorker` |
+| Security | Android Keystore / StrongBox key provisioning, `androidx.biometric`, `security-crypto` |
+| Observability | OpenTelemetry 1.44.1 (API, SDK, OTLP exporter) |
+| Test tooling | JUnit 5, Robolectric, MockK, Turbine, Espresso |
+
+The local database is **encrypted at rest**: `AthkarDbFactory` opens Room through a SQLCipher
+`SupportFactory` whose 256-bit key comes from hardware-backed Keystore via a `DbKeyProvider`
+abstraction, so the Data layer never touches raw key material.
 
 ---
 
@@ -232,11 +288,17 @@ See [docs/security/](docs/security/) for the full threat model and MASVS L2 evid
 
 ## Known gaps
 
-- No Gradle wrapper (`gradlew`) committed — a fresh clone needs a system Gradle install.
-- No CI workflow in `.github/workflows/` yet; the intended pipeline is specified in
+- **No Gradle wrapper.** `android/gradle/wrapper/` exists but is empty — a fresh clone needs a
+  system Gradle 8.10+ install and cannot reproduce the exact build version.
+- **No tests outside `core`.** The `app`, `data`, `sync`, `domain`, and `feature-*` modules have
+  empty `src/test` and `src/androidTest` directories.
+- **ADR-01 enforcement is partial.** The `enforcePureDomainLayers` task is a textual import scan;
+  the Detekt `ApiDetektRule` and `archTest` bytecode suite specified in the ADR are not wired up.
+- **No CI workflow** in `.github/workflows/`; the intended pipeline is specified in
   [store-assets.md](docs/operations/store-assets.md#6-cicd-pipeline-github-actions).
-- Android app/data/sync/feature modules and the iOS target are directory scaffolds only.
-- Backend is contract-only.
+- **Prayer times UI is a placeholder** — `:feature-prayer-times` contains only a manifest, and the
+  app renders `PrayerTimesPlaceholder` instead.
+- **iOS is directory scaffolds only**; the backend is contract-only.
 
 ---
 
