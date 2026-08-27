@@ -1,0 +1,51 @@
+# ---- Gradle / Kotlin / JVM ----
+build/
+!scripts/build/
+.gradle/
+.kotlin/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.log
+local.properties
+
+# ---- Android ----
+*.apk
+*.aab
+*.ap_
+*.dex
+captures/
+.externalNativeBuild/
+.cxx/
+release/
+*.keystore
+*.jks
+
+# ---- iOS / Xcode ----
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.mobileprovision
+*.p12
+*.p8
+Pods/
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Secrets (never commit; see docs/security/secret-rotation-policy.md) ----
+.env
+.env.*
+*.pem
+secrets/
+google-services.json
+GoogleService-Info.plist

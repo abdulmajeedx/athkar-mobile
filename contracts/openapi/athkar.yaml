@@ -1,0 +1,552 @@
+openapi: 3.1.0
+info:
+  title: Athkar API
+  version: 1.0.0
+  description: |
+    Backend contract for the Athkar offline-first mobile app (dhikr / remembrance reminders and
+    prayer times). Both the Android (Ktor) and iOS (URLSession/AsyncHTTPClient + generated models)
+    clients are generated from this single schema so behavior stays identical across platforms.
+
+    Client code generation targets:
+      - Android: OpenAPI Generator (kotlin client) -> generated/src/main/kotlin
+      - iOS:     Swift OpenAPI Generator (swift-client) -> generated/Sources
+    A CI job fails the build on any unannounced breaking change in this schema (contract tests).
+
+  contact:
+    name: Athkar Engineering
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.athkar.example.com
+    description: Production
+  - url: https://staging.api.athkar.example.com
+    description: Staging
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+    description: OAuth 2.1 + PKCE (S256), 15-minute access tokens, rotating refresh tokens.
+  - name: Sync
+    description: Cursor-based delta sync with idempotent writes (outbox) and server-issued HLC.
+  - name: Billing
+    description: Server-side receipt validation (StoreKit 2 / Play Billing 7).
+  - name: Notifications
+    description: Push registration tokens.
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Exchange an authorization code for tokens.
+      description: |
+        Authorization-code flow with PKCE per OAuth 2.1. The client calls the OIDC provider
+        directly; this endpoint is an internal token exchange for first-party clients and is
+        mostly used by the web/SSO path. Returns a rotating refresh token (30-day lifetime) and a
+        15-minute access token. Refresh-token reuse (replay) is detected server-side and revokes
+        the whole token family within ~1 second.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, code_verifier, client_id, redirect_uri]
+              properties:
+                code: { type: string, description: Authorization code from the IdP. }
+                code_verifier: { type: string, description: PKCE verifier (S256). Never sent as a client secret. }
+                client_id: { type: string, description: Public client id; no embedded secret. }
+                redirect_uri: { type: string, format: uri }
+            example:
+              code: "auth-code-abc123"
+              code_verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+              client_id: "athkar-android"
+              redirect_uri: "athkar://oauth/callback"
+      responses:
+        '200':
+          description: Tokens issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400': { $ref: '#/components/responses/Error400' }
+        '428': { $ref: '#/components/responses/ReuseDetected' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Rotate the refresh token.
+      description: |
+        Returns a new rotating refresh token and a fresh access token. If the presented refresh
+        token has already been used (reuse detection), the entire token family is revoked within
+        ~1 second and 428 is returned; the client must then re-authenticate.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string, description: Current refresh token held in Keychain / Keystore. }
+            example: { refresh_token: "rt-rotating-abcdef123" }
+      responses:
+        '200':
+          description: New rotating token pair.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400': { $ref: '#/components/responses/Error400' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '428': { $ref: '#/components/responses/ReuseDetected' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Log out and revoke the token family.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Revoked. Client wipes local keys/caches within ~1 second.
+        '401': { $ref: '#/components/responses/Error401' }
+
+  /sync/push:
+    post:
+      tags: [Sync]
+      operationId: pushChanges
+      summary: Push local writes (outbox) to the server idempotently.
+      description: |
+        The client replays its local outbox. Each item carries an idempotency key (UUID v7); the
+        server returns the SAME result for any replay of the same key, making retries safe. The
+        server returns a server-issued HLC for each accepted write. On a mid-stream failure the
+        client resumes from the last acknowledged key (never from the start).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, max_server_hlc]
+              properties:
+                items:
+                  type: array
+                  maxItems: 200
+                  description: Writes to apply, idempotent by idempotency_key.
+                  items:
+                    $ref: '#/components/schemas/SyncWrite'
+                max_server_hlc:
+                  type: integer
+                  format: int64
+                  description: Highest server HLC this client has seen; server uses it to advance its clock.
+            example:
+              max_server_hlc: 7270692612882128896
+              items:
+                - idempotency_key: "01929e7a-5f1a-7ef4-8000-000000000001"
+                  op_type: UPSERT_ENTITY
+                  entity_type: adhkar
+                  entity_id: "0192abcd-...-entity-1"
+                  field: title
+                  value: "أذكار الصباح"
+                  client_hlc: 7270692612882128895
+                  writer_id: "dev-alpha"
+      responses:
+        '200':
+          description: Writes acknowledged with server HLCs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushResult'
+        '409':
+          description: Idempotency-key conflict resolved to the previously stored result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushResult'
+        '401': { $ref: '#/components/responses/Error401' }
+        '413':
+          description: Payload too large (>256 KiB per batch). Client must shrink or page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorMessage' }
+
+  /sync/changes:
+    get:
+      tags: [Sync]
+      operationId: getChanges
+      summary: Cursor-based delta sync (pull).
+      description: |
+        Returns pages of server changes whose server HLC is strictly greater than the cursor's
+        position. Page size is 200; every page is < 256 KiB. If a mid-stream failure occurs the
+        client resumes from the last decoded page, never from the start.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: true
+          description: Opaque position token (last successful server HLC). Empty string "" = full sync.
+          schema: { type: string, default: "" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 200, maximum: 200, minimum: 1 }
+      responses:
+        '200':
+          description: A page of changes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangesPage'
+        '401': { $ref: '#/components/responses/Error401' }
+
+  /sync/ack:
+    post:
+      tags: [Sync]
+      operationId: ackChanges
+      summary: Acknowledge applied changes and advance the cursor.
+      description: |
+        After the client has durably applied a page, it posts back the next cursor. The server
+        uses this as the authoritative last-synced position.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cursor]
+              properties:
+                cursor: { type: string, description: The next_cursor from the last applied page. }
+            example: { cursor: "7270692612894101503" }
+      responses:
+        '204': { description: Cursor advanced. }
+        '401': { $ref: '#/components/responses/Error401' }
+
+  /sync/manual-merge:
+    post:
+      tags: [Sync]
+      operationId: resolveManualMerge
+      summary: Submit a human decision for a manual-merge conflict.
+      description: |
+        Financial / security-sensitive fields (see ManualMergeFields) are never auto-merged. When a
+        conflict is detected, the client shows both versions side by side; this endpoint records the
+        chosen value.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_type, entity_id, field, chosen, base_server_hlc, base_client_hlc]
+              properties:
+                entity_type: { type: string }
+                entity_id: { type: string }
+                field: { type: string }
+                chosen: { type: string, description: The side chosen (local, remote, or explicit value). }
+                base_server_hlc: { type: integer, format: int64 }
+                base_client_hlc: { type: integer, format: int64 }
+            example:
+              entity_type: adhkar
+              entity_id: "0192abcd-entity-1"
+              field: paymentStatus
+              chosen: remote
+              base_server_hlc: 7270692612882128896
+              base_client_hlc: 7270692612882000000
+      responses:
+        '204': { description: Resolution recorded and propagated to all devices. }
+        '401': { $ref: '#/components/responses/Error401' }
+
+  /billing/validate:
+    post:
+      tags: [Billing]
+      operationId: validateReceipt
+      summary: Server-side receipt / purchase-token validation.
+      description: |
+        The client sends the App Store / Play purchase token (or s2s notification payload) after a
+        purchase restore or on entitlement change. The server validates with Apple/Google directly
+        and returns the entitlement. Client never derives validity from an unsigned local state.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiptValidationRequest'
+      responses:
+        '200':
+          description: Validated entitlement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entitlement'
+        '401': { $ref: '#/components/responses/Error401' }
+        '409':
+          description: Already validated (idempotent replay returns prior result).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entitlement' }
+
+  /notifications/register:
+    post:
+      tags: [Notifications]
+      operationId: registerPushToken
+      summary: Register (or refresh) a device push token.
+      description: |
+        Stores the FCM token / APNs device token for a user. Used to deliver user-generated
+        reminder notifications and sync wake-up hints (never guarantees background delivery).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, token]
+              properties:
+                platform: { type: string, enum: [android, ios] }
+                token: { type: string }
+            example: { platform: android, token: "fcm-xxxxx" }
+      responses:
+        '204': { description: Token stored. }
+        '401': { $ref: '#/components/responses/Error401' }
+
+  /config/remote:
+    get:
+      tags: [Notifications]
+      operationId: getRemoteConfig
+      summary: Emergency kill-switch and feature-flag remote config.
+      description: |
+        Signed and time-stamped remote config used for the emergency kill-switch (takes effect in
+        < 5 minutes), feature flags, and the secondary TLS pin. The response is cached and reused
+        offline.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Signed remote config.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoteConfig'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: UUID v7; the server returns the same result for replays of the same key.
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error400:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorMessage' }
+    Error401:
+      description: Unauthenticated. Client should refresh the token once then retry.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorMessage' }
+    ReuseDetected:
+      description: Refresh-token reuse detected; the whole token family was revoked. Re-authenticate.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorMessage' }
+
+  schemas:
+    ErrorMessage:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code: { type: string, description: Stable machine-readable code, e.g. INV_VERIFIER. }
+        message: { type: string }
+        request_id: { type: string, description: OTel trace id propagated so app and server correlate. }
+        retry_after: { type: integer, description: Seconds to wait before retry (used with 429/503). }
+      example:
+        code: ERR_TOKEN_REUSE
+        message: "Refresh token reuse detected; family revoked."
+        request_id: "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    TokenResponse:
+      type: object
+      required: [access_token, refresh_token, expires_in, token_type]
+      properties:
+        access_token: { type: string, description: 15-minute bearer JWT. }
+        refresh_token: { type: string, description: New rotating refresh token (30-day). }
+        expires_in: { type: integer, description: Seconds until access token expiry (900). }
+        token_type: { type: string, enum: [Bearer] }
+      example:
+        access_token: "eyJhbGciOiJFUzI1NiJ9..."
+        refresh_token: "rt-rotating-abcdefg"
+        expires_in: 900
+        token_type: Bearer
+
+    SyncWrite:
+      type: object
+      required: [idempotency_key, op_type, entity_type, entity_id, client_hlc, writer_id]
+      properties:
+        idempotency_key:
+          type: string
+          format: uuid
+          description: UUID v7; server returns the same result for any replay.
+        op_type:
+          type: string
+          enum: [UPSERT_ENTITY, TOMBSTONE, LWW_MAP_SET, MANUAL_MERGE]
+        entity_type: { type: string }
+        entity_id: { type: string }
+        field: { type: string, description: Field being written (per-field LWW). }
+        value:
+          oneOf:
+            - { type: string }
+            - { type: integer }
+            - { type: boolean }
+            - { type: array, items: { type: string } }
+            - { type: "null" }
+        client_hlc: { type: integer, format: int64 }
+        writer_id: { type: string, description: Only used for deterministic tie-breaking, never identity. }
+
+    WriteAck:
+      type: object
+      required: [idempotency_key, server_hlc, status]
+      properties:
+        idempotency_key: { type: string, format: uuid }
+        server_hlc: { type: integer, format: int64, description: Server-issued HLC for this write. }
+        status: { type: string, enum: [applied, duplicate, rejected] }
+        error: { type: string }
+
+    PushResult:
+      type: object
+      required: [acks]
+      properties:
+        acks:
+          type: array
+          items: { $ref: '#/components/schemas/WriteAck' }
+      example:
+        acks:
+          - idempotency_key: "01929e7a-5f1a-7ef4-8000-000000000001"
+            server_hlc: 7270692612882128898
+            status: applied
+
+    ChangeItem:
+      type: object
+      required: [entity_type, entity_id, server_hlc, op_type]
+      properties:
+        entity_type: { type: string }
+        entity_id: { type: string }
+        server_hlc: { type: integer, format: int64 }
+        op_type: { type: string, enum: [UPSERT_ENTITY, TOMBSTONE, LWW_MAP_SET] }
+        payload:
+          type: object
+          additionalProperties: true
+          description: Field values for the entity (or replaced map for LWW_MAP_SET).
+
+    ChangesPage:
+      type: object
+      required: [changes, next_cursor, has_more]
+      properties:
+        changes:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/ChangeItem' }
+        next_cursor: { type: string }
+        has_more: { type: boolean }
+      example:
+        changes:
+          - entity_type: adhkar
+            entity_id: "0192abcd-entity-1"
+            server_hlc: 7270692612882128898
+            op_type: UPSERT_ENTITY
+            payload: { title: "أذكار الصباح", target_count: 33 }
+        next_cursor: "7270692612882128898"
+        has_more: false
+
+    ReceiptValidationRequest:
+      type: object
+      required: [store, token, transaction_id]
+      properties:
+        store: { type: string, enum: [app_store, google_play] }
+        token: { type: string, description: Signed receipt / purchase token from the store. }
+        transaction_id: { type: string, description: Store transaction id (idempotent). }
+        notification_type:
+          type: string
+          description: App Store Server Notifications V2 / Play RTDN type when triggered server-side.
+      example:
+        store: app_store
+        token: "cHJvZHVjdGlvbi1yZWNlaXB0..."
+        transaction_id: "1000001234567890"
+
+    Entitlement:
+      type: object
+      required: [entitled, product_id, expires_at]
+      properties:
+        entitled: { type: boolean }
+        product_id: { type: string }
+        expires_at: { type: integer, format: int64, description: Unix ms; honor grace periods & retries. }
+        renewal_state:
+          type: string
+          enum: [active, grace_period, expired, refunded, revoked, retry_billing]
+      example:
+        entitled: true
+        product_id: "athkar.premium.monthly"
+        expires_at: 1735500000000
+        renewal_state: active
+
+    RemoteConfig:
+      type: object
+      required: [version, issued_at, signature, flags, pins]
+      properties:
+        version: { type: integer }
+        issued_at: { type: integer, format: int64 }
+        signature: { type: string, description: Signed with server key so config cannot be forged. }
+        flags:
+          type: object
+          additionalProperties: { type: boolean }
+        pins:
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            required: [type, hash]
+            properties:
+              type: { type: string, enum: [primary, backup] }
+              hash: { type: string, description: SPKI SHA-256 base64 pin. }
+      example:
+        version: 41
+        issued_at: 1735500000000
+        signature: "MEUCIQ..."
+        flags: { disableSync: false, freeForAll: false }
+        pins:
+          - { type: primary, hash: "aBcD...Ef==" }
+          - { type: backup, hash: "XyZ...Q==" }
