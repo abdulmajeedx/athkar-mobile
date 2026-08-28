@@ -64,25 +64,22 @@ jobs:
         working-directory: android
         run: ./gradlew :app:assembleRelease --console=plain
 
-      - name: Launch it on an emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          target: ${{ matrix.target }}
-          arch: x86_64
-          disable-animations: true
-          emulator-boot-timeout: 900
-          script: |
-            export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
-            SMOKE_LOGCAT_OUT=logcat-api${{ matrix.api-level }}.txt \
-              scripts/ci/smoke-test.sh \
-                android/app/build/outputs/apk/release/app-release.apk \
-                com.athkar.app
+      - name: Boot an emulator and launch the app
+        env:
+          ANDROID_AVD_HOME: ${ github.workspace }/.avd
+        run: |
+          export PATH="$ANDROID_HOME/build-tools/35.0.0:$ANDROID_HOME/platform-tools:$PATH"
+          scripts/ci/boot-emulator.sh ${{ matrix.api-level }} ${{ matrix.target }}
+          scripts/ci/smoke-test.sh \
+            android/app/build/outputs/apk/release/app-release.apk \
+            com.athkar.app
 
       - name: Upload logcat
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logcat-api${{ matrix.api-level }}
-          path: logcat-api${{ matrix.api-level }}.txt
+          name: logs-api${{ matrix.api-level }}
+          path: |
+            logcat.txt
+            emulator.log
           if-no-files-found: ignore

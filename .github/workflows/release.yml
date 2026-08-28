@@ -111,26 +111,24 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq libpulse0 libnss3
 
-      - name: Launch the signed APK on an emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          disable-animations: true
-          emulator-boot-timeout: 900
-          script: |
-            export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
-            scripts/ci/smoke-test.sh \
-              android/app/build/outputs/apk/release/app-release.apk \
-              com.athkar.app
+      - name: Boot an emulator and launch the signed APK
+        env:
+          ANDROID_AVD_HOME: ${ github.workspace }/.avd
+        run: |
+          export PATH="$ANDROID_HOME/build-tools/35.0.0:$ANDROID_HOME/platform-tools:$PATH"
+          scripts/ci/boot-emulator.sh 34 google_apis
+          scripts/ci/smoke-test.sh \
+            android/app/build/outputs/apk/release/app-release.apk \
+            com.athkar.app
 
       - name: Upload logcat
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: release-logcat
-          path: logcat.txt
+          name: release-logs
+          path: |
+            logcat.txt
+            emulator.log
           if-no-files-found: ignore
 
       # The build falls back to the debug key when signing material is missing. That fallback is
