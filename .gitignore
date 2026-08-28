@@ -23,6 +23,10 @@ release/
 keystore.properties
 signing.properties
 
+# ---- Python (icon generator) ----
+__pycache__/
+*.pyc
+
 # ---- iOS / Xcode ----
 xcuserdata/
 *.xcuserstate
