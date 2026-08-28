@@ -62,16 +62,20 @@ jobs:
       - name: Build and test
         working-directory: ios
         run: |
-          set -euo pipefail
+          set -o pipefail
+          # The full transcript goes to the log and the interesting lines are pulled out of it
+          # afterwards. Filtering inside the pipeline hid a real failure once: `|| true` resets
+          # PIPESTATUS, so xcodebuild's exit code was thrown away and a red build reported green.
+          status=0
           xcodebuild test \
             -project Athkar.xcodeproj \
             -scheme Athkar \
             -destination "id=${{ steps.simulator.outputs.udid }}" \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee build.log \
-            | grep -E "error:|warning:|Test Case|Executed .* tests|\*\* (TEST|BUILD)" || true
-          # tee swallows xcodebuild's status, so the pipeline's own exit code is what decides.
-          exit "${PIPESTATUS[0]}"
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log || status=$?
+
+          echo "----- errors, failures and test counts -----"
+          grep -E "error:|failed|Executed [0-9]+ test|\*\* (TEST|BUILD)" build.log | tail -40 || true
+          exit "$status"
 
       - name: Upload the build log
         if: always()

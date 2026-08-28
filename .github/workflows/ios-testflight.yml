@@ -1,0 +1,168 @@
+name: iOS TestFlight
+
+# Tagging with `ios-vX.Y.Z` ships a build to TestFlight. Kept separate from the Android release
+# workflow so the two platforms version and ship independently.
+#
+# Prerequisites, all one-time (see ios/README.md):
+#   1. Apple Developer Program membership.
+#   2. The bundle id com.athkar.app registered, and an app record created in App Store Connect.
+#   3. An App Store Connect API key with the App Manager role, stored as the four secrets below.
+on:
+  push:
+    tags:
+      - "ios-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version, without the leading v (e.g. 1.0.1)"
+        required: true
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out
+        # The build number is derived from the commit count, so the whole history is needed.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Require the signing secrets
+        env:
+          ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "${ISSUER_ID:-}" ]   || missing="$missing APPSTORE_ISSUER_ID"
+          [ -n "${KEY_ID:-}" ]      || missing="$missing APPSTORE_KEY_ID"
+          [ -n "${PRIVATE_KEY:-}" ] || missing="$missing APPSTORE_PRIVATE_KEY"
+          [ -n "${TEAM_ID:-}" ]     || missing="$missing APPLE_TEAM_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing — see ios/README.md"
+            exit 1
+          fi
+
+      - name: Derive the version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            NAME="${{ inputs.version }}"
+          else
+            REF="${GITHUB_REF_NAME#ios-v}"
+            NAME="$REF"
+          fi
+          if ! [[ "$NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$NAME' is not MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          # TestFlight rejects a build number it has seen before for the same version. The commit
+          # count only ever grows, unlike a run number that resets if the workflow is recreated.
+          BUILD=$(git rev-list --count HEAD)
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Shipping $NAME ($BUILD)"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          echo "Generated for team $TEAM_ID"
+
+      - name: Store the App Store Connect API key
+        env:
+          PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+        run: |
+          set -euo pipefail
+          # xcodebuild reads the key from a path; altool reads it from ~/.appstoreconnect.
+          mkdir -p ~/private_keys ~/.appstoreconnect/private_keys
+          printf '%s' "$PRIVATE_KEY" > ~/private_keys/AuthKey_${KEY_ID}.p8
+          cp ~/private_keys/AuthKey_${KEY_ID}.p8 ~/.appstoreconnect/private_keys/
+          chmod 600 ~/private_keys/AuthKey_${KEY_ID}.p8
+
+      - name: Archive
+        working-directory: ios
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # -allowProvisioningUpdates lets Xcode create and download the certificate and profile
+          # itself, authenticated by the API key — which is why no .p12 or .mobileprovision has to
+          # be base64'd into a secret.
+          xcodebuild archive \
+            -project Athkar.xcodeproj \
+            -scheme Athkar \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/Athkar.xcarchive" \
+            -destination 'generic/platform=iOS' \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            MARKETING_VERSION="${{ steps.version.outputs.name }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}"
+
+      - name: Export the IPA
+        working-directory: ios
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+            <key>signingStyle</key><string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Athkar.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+
+      - name: Upload to TestFlight
+        env:
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          IPA=$(find "$RUNNER_TEMP/export" -name "*.ipa" | head -1)
+          if [ -z "$IPA" ]; then
+            echo "::error::No .ipa was exported"
+            exit 1
+          fi
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$IPA" \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+
+      - name: Remove the API key
+        if: always()
+        run: rm -rf ~/private_keys ~/.appstoreconnect/private_keys
