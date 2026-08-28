@@ -1,17 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Same sensitive-data exclusion as backup_rules.xml, applied to API 31+ data extraction. -->
+<!--
+  API 31+ backup and transfer rules.
+
+  The database is deliberately absent from both sections. It is encrypted by SQLCipher with a
+  passphrase sealed by an Android Keystore key, and that key is bound to the hardware of the device
+  that made it — it cannot be backed up, transferred, or reconstructed. Carrying the database to a
+  new device therefore carries a file nothing there can open: the app would generate a fresh
+  passphrase, fail to decrypt an existing database, and be broken from first launch.
+
+  Losing it costs the user their favourites. The adhkar themselves are bundled in the APK and are
+  re-seeded automatically, so the alternative — an app that will not open — is far worse.
+
+  Cloud backup carries nothing at all (STRIDE surface S3, backup/cloud leakage). Device transfer is
+  a direct phone-to-phone copy rather than a trip through someone else's storage, so the prayer
+  settings — method, madhab, place — travel with it; they are the only thing here whose loss the
+  user would notice and could not trivially redo.
+-->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="database" path="athkar.db" />
-        <exclude domain="database" path="athkar.db-wal" />
-        <exclude domain="database" path="athkar.db-shm" />
-        <exclude domain="sharedpref" path="athkar_session.xml" />
-        <exclude domain="file" path="cache/" />
         <exclude domain="root" path="." />
     </cloud-backup>
     <device-transfer>
-        <include domain="database" path="." />
-        <include domain="sharedpref" path="athkar_session.xml" />
-        <include domain="file" path="adhkar" />
+        <include domain="file" path="datastore/prayer_preferences.preferences_pb" />
     </device-transfer>
 </data-extraction-rules>

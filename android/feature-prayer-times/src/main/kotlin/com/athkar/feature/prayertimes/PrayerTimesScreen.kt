@@ -92,9 +92,9 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
     // The permission result drives the fix directly: asking and then not using the answer is the
     // classic way to leave a user staring at an unchanged screen after they granted it.
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+        ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted.values.any { it }) viewModel.useDeviceLocation()
+        if (granted) viewModel.useDeviceLocation()
     }
 
     PrayerTimesScreen(
@@ -102,14 +102,7 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
         countdown = countdown,
         isLocating = isLocating,
         locationError = locationError,
-        onUseDeviceLocation = {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                ),
-            )
-        },
+        onUseDeviceLocation = { permissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
         onSelectPlace = viewModel::selectPlace,
         onSelectMethod = viewModel::selectMethod,
         onSelectMadhab = viewModel::selectMadhab,

@@ -50,11 +50,9 @@ class AndroidLocationSource @Inject constructor(
         return (live ?: cached)?.toPlace()
     }
 
-    private fun hasPermission(): Boolean {
-        val fine = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse = context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
-        return fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED
-    }
+    private fun hasPermission(): Boolean =
+        context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun bestLastKnown(manager: LocationManager): Location? =
         PROVIDERS.mapNotNull { provider ->
@@ -139,8 +137,10 @@ class AndroidLocationSource @Inject constructor(
     }
 
     private companion object {
+        // GPS is omitted deliberately: with coarse permission the OS blurs its fix to roughly the
+        // same precision anyway, while a satellite lock can take tens of seconds outdoors and never
+        // arrives indoors. The network and passive providers answer in milliseconds.
         val PROVIDERS = listOf(
-            LocationManager.GPS_PROVIDER,
             LocationManager.NETWORK_PROVIDER,
             LocationManager.PASSIVE_PROVIDER,
         )
