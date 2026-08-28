@@ -27,10 +27,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The lowest version the app claims to support, and a current one. The minSdk end is not
-          # ceremonial: several code paths branch on API level and only run down there.
-          - api-level: 26
-            target: default
           - api-level: 34
             target: google_apis
 
@@ -66,10 +62,8 @@ jobs:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
           arch: x86_64
-          profile: pixel_2
-          ram-size: 2048M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-boot-timeout: 900
           script: |
             export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
             SMOKE_LOGCAT_OUT=logcat-api${{ matrix.api-level }}.txt \

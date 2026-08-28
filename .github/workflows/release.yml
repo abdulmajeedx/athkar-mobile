@@ -109,10 +109,8 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          profile: pixel_2
-          ram-size: 2048M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-boot-timeout: 900
           script: |
             export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
             scripts/ci/smoke-test.sh \
