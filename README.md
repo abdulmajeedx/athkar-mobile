@@ -357,5 +357,8 @@ on each new tag, and installs with one tap.
 
 ## License
 
-**Proprietary.** All rights reserved. See the `license` field in
-[`contracts/openapi/athkar.yaml`](contracts/openapi/athkar.yaml).
+**Proprietary.** All rights reserved — see [`LICENSE`](LICENSE).
+
+The licence covers the code authored here. It does not extend to the
+open-source libraries the app is built on, each of which keeps its own licence, nor to the text of
+*Hisn al-Muslim* that the app bundles; see [`LICENSE`](LICENSE) for both.
