@@ -33,6 +33,7 @@ targets:
         # The INFOPLIST_KEY_* settings below only become an Info.plist when Xcode is told to
         # synthesise one; without this the build looks for a file nobody wrote.
         GENERATE_INFOPLIST_FILE: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: أذكاري
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

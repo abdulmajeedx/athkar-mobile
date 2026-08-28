@@ -349,8 +349,7 @@ on each new tag, and installs with one tap.
 - **Sync has no server** — `BASE_URL` points at `api.athkar.example.com`, which does not exist, so
   the outbox accumulates locally and never drains.
 - **No one has looked at the iOS screens.** [`ios/`](ios/README.md) compiles and its tests pass on a
-  macOS runner, but the app has never been run on a device or a simulator by a human, and it has no
-  app icon.
+  macOS runner, but the app has never been run on a device or a simulator by a human.
 - **The TestFlight workflow has never run** — it needs a paid Apple Developer account.
 - **The backend is contract-only.**
 

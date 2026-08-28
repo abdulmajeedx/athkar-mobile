@@ -105,9 +105,7 @@ One-time setup:
 
 1. Join the Apple Developer Program.
 2. Register the bundle id `com.athkar.app` and create the app record in App Store Connect.
-3. **Add an app icon.** App Store Connect rejects an upload without one; the project currently has
-   no asset catalog, so add `Assets.xcassets` with a 1024×1024 `AppIcon` before the first tag.
-4. Create an App Store Connect API key with the **App Manager** role, then set four repository
+3. Create an App Store Connect API key with the **App Manager** role, then set four repository
    secrets:
 
    | Secret | Where it comes from |
@@ -116,6 +114,10 @@ One-time setup:
    | `APPSTORE_KEY_ID` | the key's ID on the same page |
    | `APPSTORE_PRIVATE_KEY` | the whole contents of the downloaded `AuthKey_*.p8` |
    | `APPLE_TEAM_ID` | Apple Developer → Membership |
+
+   The app icon is already in place: `Athkar/Resources/Assets.xcassets`, drawn by
+   [`scripts/generate_ios_icon.py`](../scripts/generate_ios_icon.py). Edit the script and re-run it
+   rather than replacing the PNG by hand, so the source and the artwork stay in step.
 
 Then:
 
@@ -133,5 +135,3 @@ build number it has already seen for a version, and a run number resets if the w
   under 30 seconds in the bundle.
 - **No sync.** Same as Android: there is no server.
 - **Portrait only**, matching the compass maths.
-- **No app icon.** Fine for the simulator and for a development build on your own device; a
-  TestFlight upload will be rejected without one.
