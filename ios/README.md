@@ -115,8 +115,9 @@ One-time setup:
    | `APPSTORE_PRIVATE_KEY` | the whole contents of the downloaded `AuthKey_*.p8` |
    | `APPLE_TEAM_ID` | Apple Developer → Membership |
 
-   The app icon is already in place: `Athkar/Resources/Assets.xcassets`, drawn by
-   [`scripts/generate_ios_icon.py`](../scripts/generate_ios_icon.py). Edit the script and re-run it
+   The app icon is already in place: `Athkar/Resources/Assets.xcassets`, drawn together with the
+   Android one by
+   [`scripts/generate_icons.py`](../scripts/generate_icons.py). Edit the script and re-run it
    rather than replacing the PNG by hand, so the source and the artwork stay in step.
 
 Then:
