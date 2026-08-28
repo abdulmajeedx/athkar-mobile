@@ -41,6 +41,14 @@ jobs:
           sudo apt-get install -y cpu-checker >/dev/null 2>&1 || true
           kvm-ok || echo "kvm-ok reports the host cannot use KVM"
 
+      - name: Install the emulator's shared libraries
+        run: |
+          # ubuntu-24.04 runners ship without libpulse, which the emulator's qemu binary links at
+          # load time. Without it the process dies before executing a line and adb only ever reports
+          # a device that is not there.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libpulse0 libnss3
+
       - name: Install the system image
         run: |
           set -x
