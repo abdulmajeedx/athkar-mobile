@@ -1,0 +1,106 @@
+name: Emulator doctor
+
+# Two runs of the smoke test died with "Timeout waiting for emulator to boot" while adb repeated
+# `device 'emulator-5554' not found` — which is not a slow boot but a process that never registered.
+# This workflow answers why, by starting a bare emulator by hand and keeping its own output, instead
+# of tuning options against a thing that has never worked once.
+on:
+  workflow_dispatch:
+    inputs:
+      api-level:
+        description: "API level to try"
+        default: "34"
+      target:
+        description: "System image target (default | google_apis | google_apis_playstore)"
+        default: "google_apis"
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Runner facts
+        run: |
+          echo "--- os ---";        lsb_release -a 2>/dev/null || cat /etc/os-release
+          echo "--- cpu ---";       nproc; grep -m1 "model name" /proc/cpuinfo
+          echo "--- virtualisation extensions ---"
+          grep -oE "(vmx|svm)" /proc/cpuinfo | sort -u || echo "NONE — the CPU cannot host a fast emulator"
+          echo "--- /dev/kvm ---";  ls -l /dev/kvm 2>&1 || echo "MISSING"
+          echo "--- memory ---";    free -h
+          echo "--- disk ---";      df -h / /mnt 2>/dev/null | head -5
+          echo "--- ANDROID_HOME ---"; echo "$ANDROID_HOME"; ls "$ANDROID_HOME" 2>/dev/null
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          echo "--- after ---"; ls -l /dev/kvm 2>&1 || echo "STILL MISSING"
+          # Proves the device is not merely present but usable by this user.
+          sudo apt-get install -y cpu-checker >/dev/null 2>&1 || true
+          kvm-ok || echo "kvm-ok reports the host cannot use KVM"
+
+      - name: Install the system image
+        run: |
+          set -x
+          SDKMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "emulator" \
+            "system-images;android-${{ inputs.api-level }};${{ inputs.target }};x86_64"
+          "$SDKMANAGER" --list_installed | grep -E "system-images|emulator|platform-tools"
+
+      - name: Create the AVD
+        run: |
+          set -x
+          AVDMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/avdmanager | head -1)
+          echo no | "$AVDMANAGER" create avd \
+            --force --name doctor \
+            --package "system-images;android-${{ inputs.api-level }};${{ inputs.target }};x86_64"
+          "$AVDMANAGER" list avd
+
+      # The emulator is started detached with its own output captured. The action hides this, which
+      # is exactly why two runs told us nothing beyond "timeout".
+      - name: Boot it, keeping the emulator's own output
+        id: boot
+        run: |
+          set -o pipefail
+          export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH"
+          emulator -version | head -3
+
+          nohup emulator -avd doctor \
+            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
+            -no-snapshot -verbose -show-kernel \
+            > emulator.log 2>&1 &
+          EMU_PID=$!
+          echo "emulator pid $EMU_PID"
+
+          booted=no
+          for i in $(seq 1 60); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo "::error::The emulator process exited after $((i*10))s"
+              break
+            fi
+            state=$(adb get-state 2>/dev/null || true)
+            boot=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+            echo "[$((i*10))s] adb state='${state:-none}' boot_completed='${boot:-}'"
+            if [ "$boot" = "1" ]; then booted=yes; break; fi
+            sleep 10
+          done
+
+          echo "booted=$booted" >> "$GITHUB_OUTPUT"
+          [ "$booted" = "yes" ] || exit 1
+
+      - name: Emulator log
+        if: always()
+        run: |
+          echo "--- first 80 lines ---"; head -80 emulator.log 2>/dev/null || echo "(no log)"
+          echo "--- last 120 lines ---"; tail -120 emulator.log 2>/dev/null || echo "(no log)"
+
+      - name: Upload the emulator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-log-api${{ inputs.api-level }}
+          path: emulator.log
+          if-no-files-found: ignore
