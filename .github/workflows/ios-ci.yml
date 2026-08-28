@@ -1,0 +1,82 @@
+name: iOS build & test
+
+# The macOS runner is the only Swift compiler this project has access to, so every push that touches
+# ios/ is compiled and tested here. Nothing below needs an Apple Developer account: simulator builds
+# are unsigned.
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ci.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      # Simulator names drift between runner images, so the destination is discovered rather than
+      # hardcoded — a missing "iPhone 16" should not read as a broken build.
+      - name: Pick a simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available --json \
+            | python3 -c "
+          import json, sys
+          runtimes = json.load(sys.stdin)['devices']
+          best = None
+          for runtime, devices in runtimes.items():
+              if 'iOS' not in runtime:
+                  continue
+              for device in devices:
+                  if device.get('isAvailable') and 'iPhone' in device['name']:
+                      best = device['udid']
+          print(best or '')
+          ")
+          if [ -z "$UDID" ]; then
+            echo '::error::No available iPhone simulator on this runner'
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project Athkar.xcodeproj \
+            -scheme Athkar \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build.log \
+            | grep -E "error:|warning:|Test Case|Executed .* tests|\*\* (TEST|BUILD)" || true
+          # tee swallows xcodebuild's status, so the pipeline's own exit code is what decides.
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: ios/build.log
+          if-no-files-found: ignore
