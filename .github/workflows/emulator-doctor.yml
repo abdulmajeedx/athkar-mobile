@@ -18,6 +18,12 @@ jobs:
   doctor:
     runs-on: ubuntu-latest
 
+    # avdmanager honours XDG_CONFIG_HOME and writes to ~/.config/.android/avd, while the emulator
+    # only ever looks in ANDROID_AVD_HOME, ANDROID_SDK_HOME/avd and ~/.android/avd. Naming the
+    # directory explicitly is what makes the two agree.
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.avd
+
     steps:
       - name: Runner facts
         run: |
@@ -61,11 +67,15 @@ jobs:
       - name: Create the AVD
         run: |
           set -x
+          mkdir -p "$ANDROID_AVD_HOME"
           AVDMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/avdmanager | head -1)
           echo no | "$AVDMANAGER" create avd \
             --force --name doctor \
             --package "system-images;android-${{ inputs.api-level }};${{ inputs.target }};x86_64"
           "$AVDMANAGER" list avd
+          echo "--- what the emulator will actually find ---"
+          ls -la "$ANDROID_AVD_HOME"
+          "$ANDROID_HOME"/emulator/emulator -list-avds
 
       # The emulator is started detached with its own output captured. The action hides this, which
       # is exactly why two runs told us nothing beyond "timeout".
