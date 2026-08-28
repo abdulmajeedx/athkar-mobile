@@ -33,6 +33,10 @@ yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
 
 echo "Creating the AVD in $ANDROID_AVD_HOME..."
 echo no | "$AVDMANAGER" create avd --force --name ci --package "$IMAGE" > /dev/null
+
+# The default userdata partition is ~7 GB, which a runner that has just built the app no longer
+# has. Installing one APK needs a tiny fraction of that.
+echo "disk.dataPartition.size=${EMULATOR_DATA_PARTITION:-3072M}" >> "$ANDROID_AVD_HOME/ci.avd/config.ini"
 emulator -list-avds
 
 echo "Starting the emulator..."

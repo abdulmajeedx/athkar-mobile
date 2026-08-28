@@ -59,6 +59,10 @@ jobs:
           # a device that is not there.
           sudo apt-get update -qq
           sudo apt-get install -y -qq libpulse0 libnss3
+          # The emulator wants ~7 GB for userdata and the Gradle build has already taken its share.
+          # The bundled NDK is gigabytes of toolchain nothing here compiles against.
+          sudo rm -rf "$ANDROID_HOME/ndk" /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h /
 
       - name: Build the minified release APK
         working-directory: android
@@ -66,7 +70,7 @@ jobs:
 
       - name: Boot an emulator and launch the app
         env:
-          ANDROID_AVD_HOME: ${ github.workspace }/.avd
+          ANDROID_AVD_HOME: ${{ github.workspace }}/.avd
         run: |
           export PATH="$ANDROID_HOME/build-tools/35.0.0:$ANDROID_HOME/platform-tools:$PATH"
           scripts/ci/boot-emulator.sh ${{ matrix.api-level }} ${{ matrix.target }}
