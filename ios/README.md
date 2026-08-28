@@ -7,10 +7,14 @@
 
 </div>
 
-> **This code has never been compiled.** It was written on a Linux machine with no Swift toolchain,
-> so every line here is unverified in a way the Android app is not. Expect to fix compile errors on
-> the first build. Run the test suite before trusting a single prayer time — it carries the same
-> published reference values as the Android suite, so it will tell you whether the port is faithful.
+This app was written on a Linux machine with no Swift toolchain, so it is compiled and tested on a
+GitHub macOS runner instead — see [`ios-ci.yml`](../.github/workflows/ios-ci.yml), which runs on
+every push that touches `ios/`. The suite carries the same published reference values as the Android
+one, so a divergence between the two ports fails a test rather than leaving two apps quietly
+disagreeing about when Fajr is.
+
+**Last run: 13 tests, 0 failures.** What is *not* verified is everything a test cannot see: no one
+has looked at these screens on a device.
 
 ## Build
 
@@ -87,9 +91,47 @@ and prayer times move daily so no repeating trigger can express them. A long win
 foreground is the only shape that works, and iOS keeps just the 64 soonest pending notifications —
 which is what caps the window at ten days.
 
+## Shipping to TestFlight
+
+[`ios-testflight.yml`](../.github/workflows/ios-testflight.yml) archives, exports and uploads on a
+macOS runner when you push an `ios-vX.Y.Z` tag. Signing assets are created by Xcode itself through
+`-allowProvisioningUpdates`, authenticated by an App Store Connect API key, so no `.p12` or
+`.mobileprovision` ever has to be base64'd into a secret.
+
+**This workflow has never run.** It needs a paid Apple Developer account, which this project does
+not have, so unlike the Android release pipeline it is unproven.
+
+One-time setup:
+
+1. Join the Apple Developer Program.
+2. Register the bundle id `com.athkar.app` and create the app record in App Store Connect.
+3. **Add an app icon.** App Store Connect rejects an upload without one; the project currently has
+   no asset catalog, so add `Assets.xcassets` with a 1024×1024 `AppIcon` before the first tag.
+4. Create an App Store Connect API key with the **App Manager** role, then set four repository
+   secrets:
+
+   | Secret | Where it comes from |
+   |---|---|
+   | `APPSTORE_ISSUER_ID` | App Store Connect → Users and Access → Integrations |
+   | `APPSTORE_KEY_ID` | the key's ID on the same page |
+   | `APPSTORE_PRIVATE_KEY` | the whole contents of the downloaded `AuthKey_*.p8` |
+   | `APPLE_TEAM_ID` | Apple Developer → Membership |
+
+Then:
+
+```bash
+git tag ios-v1.0.1
+git push origin ios-v1.0.1
+```
+
+The build number is the repository's commit count, which only ever grows — TestFlight rejects a
+build number it has already seen for a version, and a run number resets if the workflow is recreated.
+
 ## Not implemented
 
 - **No adhan audio.** Alerts use the default notification sound; a custom sound needs an audio file
   under 30 seconds in the bundle.
 - **No sync.** Same as Android: there is no server.
 - **Portrait only**, matching the compass maths.
+- **No app icon.** Fine for the simulator and for a development build on your own device; a
+  TestFlight upload will be rejected without one.
