@@ -58,8 +58,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Diagnostic switch: `-Pathkar.minify=false` produces a release build in every respect
+            // except R8, which is the one-step way to tell an R8 problem from a release-config one.
+            // Shrinking resources is only legal alongside code shrinking, so the two move together.
+            val minify = (providers.gradleProperty("athkar.minify").orNull ?: "true").toBoolean()
+            isMinifyEnabled = minify
+            isShrinkResources = minify
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Falling back to the debug key keeps `assembleRelease` working for anyone who clones
             // the repo, but a build signed with it can never update an installed release — hence

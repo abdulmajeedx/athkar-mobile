@@ -1,0 +1,86 @@
+name: Android launch smoke test
+
+# Unit tests never call Application.onCreate, so they can be entirely green while the app dies
+# before drawing a frame — which is exactly what shipped in v1.0.1. This workflow builds the
+# minified release APK and actually launches it on an emulator.
+#
+# No secrets are needed: the build falls back to the debug signing key, which changes nothing about
+# R8, and R8 is what this is here to catch.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - "scripts/ci/smoke-test.sh"
+      - ".github/workflows/android-smoke.yml"
+  pull_request:
+    paths:
+      - "android/**"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The lowest version the app claims to support, and a current one. The minSdk end is not
+          # ceremonial: several code paths branch on API level and only run down there.
+          - api-level: 26
+            target: default
+          - api-level: 34
+            target: google_apis
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The emulator needs hardware acceleration, and the runner's KVM device is not world-writable
+      # by default.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build the minified release APK
+        working-directory: android
+        run: ./gradlew :app:assembleRelease --console=plain
+
+      - name: Launch it on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
+            SMOKE_LOGCAT_OUT=logcat-api${{ matrix.api-level }}.txt \
+              scripts/ci/smoke-test.sh \
+                android/app/build/outputs/apk/release/app-release.apk \
+                com.athkar.app
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logcat-api${{ matrix.api-level }}
+          path: logcat-api${{ matrix.api-level }}.txt
+          if-no-files-found: ignore

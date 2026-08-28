@@ -94,6 +94,39 @@ jobs:
             -Pathkar.versionCode=${{ steps.version.outputs.code }} \
             -Pathkar.versionName=${{ steps.version.outputs.name }}
 
+      # Publishing a build nobody has launched is how v1.0.1 shipped a crash-on-open. The signed
+      # artifact itself is started on an emulator here, so a release that cannot open cannot ship.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch the signed APK on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
+            scripts/ci/smoke-test.sh \
+              android/app/build/outputs/apk/release/app-release.apk \
+              com.athkar.app
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-logcat
+          path: logcat.txt
+          if-no-files-found: ignore
+
       # The build falls back to the debug key when signing material is missing. That fallback is
       # useful locally and catastrophic in a release: a debug-signed APK can never update an
       # installed one. Fail here rather than let users discover it.
@@ -118,6 +151,15 @@ jobs:
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           sha256sum "$DEST" | tee "$DEST.sha256"
 
+          # R8 renames everything, so a crash report from this build is unreadable without the
+          # mapping that produced it. Publishing it alongside the APK is what makes `retrace`
+          # possible months later, when the build tree is long gone.
+          MAPPING=android/app/build/outputs/mapping/release/mapping.txt
+          if [ -f "$MAPPING" ]; then
+            cp "$MAPPING" "mapping-${{ steps.version.outputs.name }}.txt"
+            echo "mapping=mapping-${{ steps.version.outputs.name }}.txt" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -135,11 +177,14 @@ jobs:
           )
           # --clobber so re-running the workflow for the same tag replaces the asset instead of failing.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${{ steps.artifact.outputs.path }}" "${{ steps.artifact.outputs.path }}.sha256" --clobber
+            gh release upload "$TAG" "${{ steps.artifact.outputs.path }}" \
+              "${{ steps.artifact.outputs.path }}.sha256" \
+              ${{ steps.artifact.outputs.mapping && format('"{0}"', steps.artifact.outputs.mapping) || '' }} --clobber
           else
             gh release create "$TAG" \
               --title "أذكاري ${{ steps.version.outputs.name }}" \
               --notes "$NOTES" \
               "${{ steps.artifact.outputs.path }}" \
-              "${{ steps.artifact.outputs.path }}.sha256"
+              "${{ steps.artifact.outputs.path }}.sha256" \
+              ${{ steps.artifact.outputs.mapping && format('"{0}"', steps.artifact.outputs.mapping) || '' }}
           fi
