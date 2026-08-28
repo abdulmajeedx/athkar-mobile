@@ -38,7 +38,7 @@ platform-free Kotlin core that handles conflict-free multi-device sync.
 | `android/app` — prayer-time alarms, notification channel, boot/time-change receivers | **Implemented** (3 files) |
 | `contracts/openapi` — API contract | **Complete** (10 endpoints) |
 | `docs/` — architecture, DB, security, operations | **Complete** (~3,300 lines) |
-| `ios/Athkar/*` | Scaffolded — directories reserved, not yet implemented |
+| `ios/Athkar/*` | **Written, never compiled** — full SwiftUI app + XCTest suite, authored on Linux with no Swift toolchain |
 | `backend/` | Scaffolded — contract-first, implementation pending |
 
 The Android app **assembles and runs**: `assembleDebug` produces a ~35 MB debug APK
@@ -348,7 +348,11 @@ on each new tag, and installs with one tap.
 - **No adhan audio.** Prayer alerts use the device's default alarm tone.
 - **Sync has no server** — `BASE_URL` points at `api.athkar.example.com`, which does not exist, so
   the outbox accumulates locally and never drains.
-- **iOS is directory scaffolds only**; the backend is contract-only.
+- **iOS has never been built.** [`ios/`](ios/README.md) holds a complete SwiftUI app and test
+  suite, but it was written without a Swift compiler: expect to fix compile errors on the first
+  build, and run its tests — which carry the Android suite's reference values — before trusting a
+  prayer time.
+- **The backend is contract-only.**
 
 ---
 

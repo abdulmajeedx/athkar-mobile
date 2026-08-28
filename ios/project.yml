@@ -1,0 +1,61 @@
+# XcodeGen manifest. The .xcodeproj is generated rather than committed: a pbxproj is a merge-hostile
+# binary-in-disguise, and this file says the same thing in twenty readable lines.
+#
+#   brew install xcodegen && cd ios && xcodegen generate && open Athkar.xcodeproj
+name: Athkar
+options:
+  bundleIdPrefix: com.athkar
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  developmentLanguage: ar
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.0.1"
+    CURRENT_PROJECT_VERSION: "10001"
+    # Set to your own Apple Developer team, or pick one in Xcode's Signing & Capabilities tab.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Athkar:
+    type: application
+    platform: iOS
+    sources:
+      - path: Athkar
+        excludes:
+          - "**/.gitkeep"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.athkar.app
+        INFOPLIST_KEY_CFBundleDisplayName: أذكاري
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: >-
+          يُستخدم موقعك لحساب مواقيت الصلاة واتجاه القبلة. لا يغادر الجهاز.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ENABLE_USER_SCRIPT_SANDBOXING: true
+
+  AthkarTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - AthkarTests
+    dependencies:
+      - target: Athkar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.athkar.app.tests
+
+schemes:
+  Athkar:
+    build:
+      targets:
+        Athkar: all
+    test:
+      targets:
+        - AthkarTests
+    run:
+      config: Debug
