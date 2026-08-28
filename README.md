@@ -27,23 +27,26 @@ platform-free Kotlin core that handles conflict-free multi-device sync.
 
 | Area | State |
 |------|-------|
-| `android/core` — HLC, CRDT, sync policy (pure Kotlin/JVM) | **Implemented + tested** (22 tests, 0 failures; ~88% line coverage) |
+| `android/core` — HLC, CRDT, sync policy, prayer/qibla astronomy (pure Kotlin/JVM) | **Implemented + tested** (35 tests, 0 failures) |
 | `android/app` — Compose shell, Hilt DI, Keystore session | **Implemented** — builds a running debug APK |
 | `android/data` — Room + SQLCipher, DAOs, repositories | **Implemented** (13 files) |
 | `android/sync` — Ktor client, DTOs, WorkManager worker | **Implemented** (5 files) |
 | `android/domain` — repository ports, merge use case | **Implemented** (2 files) |
-| `android/feature-athkar` — dhikr list screen + ViewModel | **Implemented** (3 files) |
-| `android/feature-prayer-times` | Module wired, **UI not written** — the app shows a placeholder |
+| `android/designsystem` — theme, type scale, tokens | **Implemented** (2 files) |
+| `android/feature-athkar` — chapter index, readings, tally, favourites | **Implemented** (2 files) |
+| `android/feature-prayer-times` — prayer schedule + qibla compass | **Implemented** (6 files) |
+| `android/app` — prayer-time alarms, notification channel, boot/time-change receivers | **Implemented** (3 files) |
 | `contracts/openapi` — API contract | **Complete** (10 endpoints) |
 | `docs/` — architecture, DB, security, operations | **Complete** (~3,300 lines) |
 | `ios/Athkar/*` | Scaffolded — directories reserved, not yet implemented |
 | `backend/` | Scaffolded — contract-first, implementation pending |
 
-The Android app **assembles and runs**: `assembleDebug` produces a ~34 MB debug APK
-(`com.athkar.app.debug`, v1.0.0/1000, minSdk 26, targetSdk 35). Prayer times are still a
-placeholder screen, and iOS and the backend remain specification-only.
+The Android app **assembles and runs**: `assembleDebug` produces a ~35 MB debug APK
+(`com.athkar.app.debug`, v1.0.0/1000, minSdk 26, targetSdk 35) with three tabs — adhkar, prayer
+times and qibla. It ships the full text of *Hisn al-Muslim* — 132 chapters, 267 readings — alerts at
+each prayer time, and works with no network at all. iOS and the backend remain specification-only, so device-to-device sync does not function.
 
-**Test coverage is currently uneven and worth knowing about:** all 22 tests live in `core`. The
+**Test coverage is currently uneven and worth knowing about:** all 35 tests live in `core`. The
 `app`, `data`, `sync`, `domain`, and `feature-*` modules have `src/test` and `src/androidTest`
 directories wired into the build but **no test files yet**.
 
@@ -72,8 +75,8 @@ athkar/
 │   │       db/entity/*, repository/*Impl.kt, di/{Database,Repository}Module.kt
 │   ├── sync/                    Ktor client + WorkManager background sync
 │   │       network/{SyncApi,NetworkModule}.kt, dto/SyncDtos.kt, worker/AthkarSyncWorker.kt
-│   ├── feature-athkar/          dhikr UI — AthkarScreen.kt, AthkarViewModel.kt, Tokens.kt
-│   ├── feature-prayer-times/    module wired, UI not yet written
+│   ├── feature-athkar/          adhkar UI — AthkarScreen.kt, AthkarViewModel.kt
+│   ├── feature-prayer-times/    prayer schedule, qibla compass, location + method pickers
 │   ├── build.gradle.kts         root build + enforcePureDomainLayers check
 │   ├── settings.gradle.kts      includes all 7 modules
 │   └── gradle/libs.versions.toml   version catalog (single source for all dependencies)
@@ -213,17 +216,15 @@ breaking change.
 All dependency versions are pinned in
 [`android/gradle/libs.versions.toml`](android/gradle/libs.versions.toml).
 
-> **Note:** `android/gradle/wrapper/` is empty — no `gradlew`, `gradle-wrapper.jar`, or
-> `gradle-wrapper.properties` is committed, so you need **Gradle 8.10+** on your `PATH` and a
-> local Android SDK. Adding the wrapper is tracked as a known gap below.
+The Gradle wrapper is committed, so a JDK 17 and an Android SDK are all you need.
 
 ```bash
 cd android
 
-gradle assembleDebug     # → app/build/outputs/apk/debug/app-debug.apk
-gradle :core:test        # JUnit 5 unit + property tests
-gradle :core:jacocoTestReport   # coverage → core/build/reports/jacoco/test/html/index.html
-gradle check             # includes enforcePureDomainLayers (layer-purity gate)
+./gradlew assembleDebug     # → app/build/outputs/apk/debug/app-debug.apk
+./gradlew test              # all module tests (JUnit 5 unit + property tests in :core)
+./gradlew :core:jacocoTestReport   # coverage → core/build/reports/jacoco/test/html/index.html
+./gradlew check             # includes enforcePureDomainLayers (layer-purity gate)
 ```
 
 Install the debug build on a connected device:
@@ -245,8 +246,9 @@ All tests currently live in `core`:
 | `ConflictResolverPropertyTest` | Per-field entity merge convergence in random delivery order |
 | `OutboxAndCursorTest` | Outbox state machine, backoff schedule, dead-lettering, cursor advancement |
 
-Last recorded run: **22 tests, 0 failures**, ~88% line / ~80% instruction coverage. The Android
-modules have no tests yet — see Known gaps.
+Last recorded run: **35 tests, 0 failures**. Prayer times are verified against published timings
+and the qibla against published great-circle bearings for eleven cities. The Android modules have
+no tests yet — see Known gaps.
 
 ---
 
@@ -286,18 +288,66 @@ See [docs/security/](docs/security/) for the full threat model and MASVS L2 evid
 
 ---
 
+## Adhkar content
+
+The bundled collection is the complete text of **حصن المسلم** (*Hisn al-Muslim*) by
+Sa'id ibn Ali ibn Wahf al-Qahtani — 132 chapters, 267 readings with their repetition counts —
+fetched from the book's official API and shipped inside the APK:
+
+| | |
+|---|---|
+| Source | `https://www.hisnmuslim.com/api/ar/husn_ar.json` |
+| Retrieved | 2026-08-28 |
+| Bundled at | [`android/data/src/main/assets/athkar_seed.json`](android/data/src/main/assets/athkar_seed.json) (134 KB) |
+
+`AdhkarSeeder` installs it on first launch and replaces it whenever the file's `version` field is
+raised by an app update. Only rows it wrote are replaced, and favourites are carried across, so a
+content update never destroys what the user marked.
+
+---
+
+## Releasing
+
+Releases are cut by tagging. [`release.yml`](.github/workflows/release.yml) runs the tests, builds a
+signed APK, refuses to continue if the APK carries a debug signature, and publishes a GitHub Release
+with the APK and its `sha256`.
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+`versionCode` is derived from the tag as `major*10000 + minor*100 + patch`, so it can never move
+backwards between releases.
+
+**Signing.** The keystore is never committed. Locally the build reads
+`~/.athkar-signing/keystore.properties`; CI supplies the same four values from repository secrets
+(`ATHKAR_KEYSTORE_BASE64`, `ATHKAR_KEYSTORE_PASSWORD`, `ATHKAR_KEY_ALIAS`, `ATHKAR_KEY_PASSWORD`).
+When neither is present the build falls back to the debug key and warns loudly — convenient for a
+fresh clone, fatal for a release, which is why the workflow checks the signature before publishing.
+
+> **The keystore is irreplaceable.** Lose it and no future build can ever update an installed app;
+> every user would have to uninstall and lose their data. Back up `~/.athkar-signing/` somewhere
+> durable and offline.
+
+**Update notifications.** Add the repository to
+[Obtainium](https://github.com/ImranR98/Obtainium) on the device — it watches the releases, notifies
+on each new tag, and installs with one tap.
+
+---
+
 ## Known gaps
 
-- **No Gradle wrapper.** `android/gradle/wrapper/` exists but is empty — a fresh clone needs a
-  system Gradle 8.10+ install and cannot reproduce the exact build version.
 - **No tests outside `core`.** The `app`, `data`, `sync`, `domain`, and `feature-*` modules have
   empty `src/test` and `src/androidTest` directories.
 - **ADR-01 enforcement is partial.** The `enforcePureDomainLayers` task is a textual import scan;
   the Detekt `ApiDetektRule` and `archTest` bytecode suite specified in the ADR are not wired up.
-- **No CI workflow** in `.github/workflows/`; the intended pipeline is specified in
-  [store-assets.md](docs/operations/store-assets.md#6-cicd-pipeline-github-actions).
-- **Prayer times UI is a placeholder** — `:feature-prayer-times` contains only a manifest, and the
-  app renders `PrayerTimesPlaceholder` instead.
+- **No CI on pull requests** — [`release.yml`](.github/workflows/release.yml) runs only on tags.
+- **Adhkar content is read-only.** There is no way to add a personal dhikr; the bundled collection
+  is the whole corpus.
+- **No adhan audio.** Prayer alerts use the device's default alarm tone.
+- **Sync has no server** — `BASE_URL` points at `api.athkar.example.com`, which does not exist, so
+  the outbox accumulates locally and never drains.
 - **iOS is directory scaffolds only**; the backend is contract-only.
 
 ---

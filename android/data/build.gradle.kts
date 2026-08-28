@@ -29,6 +29,12 @@ android {
     lint {
         abortOnError = true
         checkDependencies = true
+        disable += setOf(
+            "GradleDependency",
+            "AndroidGradlePluginVersion",
+            "NewerVersionAvailable",
+            "OldTargetApi",
+        )
     }
 }
 

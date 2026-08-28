@@ -30,14 +30,29 @@ interface AdhkarDao {
     @Query("SELECT * FROM adhkar_entities ORDER BY serverHlc ASC LIMIT :limit")
     suspend fun allByHlc(limit: Int): List<AdhkarEntity>
 
+    @Query("SELECT COUNT(*) FROM adhkar_entities")
+    suspend fun count(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: AdhkarEntity)
+
+    /** Bulk path for seeding; a single transaction instead of one write per row. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(entities: List<AdhkarEntity>)
 
     @Query("UPDATE adhkar_entities SET tombstoned = 1, serverHlc = :serverHlc, updatedAtMillis = :now WHERE id = :id")
     suspend fun markTombstoned(id: String, serverHlc: Long, now: Long)
 
     @Query("DELETE FROM adhkar_entities WHERE id = :id")
     suspend fun deletePhysically(id: String)
+
+    /** Clears one writer's rows; used to replace bundled content when a newer set ships. */
+    @Query("DELETE FROM adhkar_entities WHERE writerId = :writerId")
+    suspend fun deleteByWriter(writerId: String): Int
+
+    /** Read before a content replacement so the user's favourites survive it. */
+    @Query("SELECT id FROM adhkar_entities WHERE pinned = 1")
+    suspend fun pinnedIds(): List<String>
 
     @Query("DELETE FROM adhkar_entities WHERE tombstoned = 1 AND updatedAtMillis < :beforeEpochMillis")
     suspend fun purgeExpiredTombstones(beforeEpochMillis: Long): Int

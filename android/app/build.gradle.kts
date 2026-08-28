@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,6 +9,27 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+/**
+ * Release signing material never lives in the repository. Locally it is read from a properties file
+ * outside the working tree (default `~/.athkar-signing/keystore.properties`); in CI the same four
+ * values arrive as environment variables from repository secrets.
+ */
+val keystorePropertiesFile = file(
+    providers.gradleProperty("athkar.keystoreProperties").orNull
+        ?: "${System.getProperty("user.home")}/.athkar-signing/keystore.properties",
+)
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.isFile) keystorePropertiesFile.inputStream().use { load(it) }
+}
+
+fun signingValue(key: String, environmentVariable: String): String? =
+    System.getenv(environmentVariable)?.takeIf { it.isNotBlank() }
+        ?: keystoreProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+
+val releaseKeystore = signingValue("storeFile", "ATHKAR_KEYSTORE_FILE")
+    ?.let(::file)
+    ?.takeIf { it.isFile }
+
 android {
     namespace = "com.athkar.app"
     compileSdk = 35
@@ -15,10 +38,22 @@ android {
         applicationId = "com.athkar.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1000
-        versionName = "1.0.0"
+        // Overridable so the release workflow can stamp the build from the git tag.
+        versionCode = (providers.gradleProperty("athkar.versionCode").orNull ?: "1000").toInt()
+        versionName = providers.gradleProperty("athkar.versionName").orNull ?: "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = signingValue("storePassword", "ATHKAR_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "ATHKAR_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "ATHKAR_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,7 +61,16 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            // Falling back to the debug key keeps `assembleRelease` working for anyone who clones
+            // the repo, but a build signed with it can never update an installed release — hence
+            // the warning, and the signature check in the release workflow.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug").also {
+                    logger.warn(
+                        "athkar: no release keystore found at $keystorePropertiesFile — " +
+                            "signing the release build with the DEBUG key. Do not distribute it.",
+                    )
+                }
         }
         debug { applicationIdSuffix = ".debug" }
     }
@@ -53,6 +97,12 @@ android {
         abortOnError = true
         checkDependencies = true
         warningsAsErrors = true
+        disable += setOf(
+            "GradleDependency",              // "newer version available" noise in this env
+            "AndroidGradlePluginVersion",    // AGP newest-version advisory
+            "NewerVersionAvailable",         // newest-version advisory
+            "OldTargetApi",                  // targetSdk 35 pinned deliberately
+        )
     }
 }
 
@@ -61,6 +111,7 @@ dependencies {
     implementation(project(":data"))
     implementation(project(":sync"))
     implementation(project(":feature-athkar"))
+    implementation(project(":designsystem"))
     implementation(project(":feature-prayer-times"))
 
     implementation(platform(libs.androidx.compose.bom))

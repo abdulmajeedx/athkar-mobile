@@ -18,7 +18,16 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { buildConfig = true }
-    lint { abortOnError = true; checkDependencies = true }
+    lint {
+        abortOnError = true
+        checkDependencies = true
+        disable += setOf(
+            "GradleDependency",
+            "AndroidGradlePluginVersion",
+            "NewerVersionAvailable",
+            "OldTargetApi",
+        )
+    }
 }
 
 dependencies {

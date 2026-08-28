@@ -4,7 +4,7 @@ build/
 .gradle/
 .kotlin/
 *.jar
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 *.class
 *.log
 local.properties
@@ -20,6 +20,8 @@ captures/
 release/
 *.keystore
 *.jks
+keystore.properties
+signing.properties
 
 # ---- iOS / Xcode ----
 xcuserdata/

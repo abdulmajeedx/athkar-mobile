@@ -8,7 +8,22 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!-- Prayer times and qibla need a position. Coarse alone is enough: a few hundred metres of
+         error moves a prayer time by well under a second, so fine location is optional. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- The qibla compass needs a magnetometer; the app degrades to a static bearing without one. -->
+    <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Prayer alerts must land at the minute, not "within the hour" as Doze would otherwise
+         batch them. Requested rather than USE_EXACT_ALARM so the user stays in control, with an
+         inexact fallback if they decline. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:name=".AthkarApplication"
@@ -66,6 +81,23 @@
                 <data android:scheme="athkar" android:host="adhkar" />
             </intent-filter>
         </activity>
+
+        <!-- Fires at each prayer time: posts the alert and re-registers the next window. -->
+        <receiver
+            android:name=".notifications.PrayerAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Re-registers alarms after the events that wipe them. -->
+        <receiver
+            android:name=".notifications.SystemEventReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

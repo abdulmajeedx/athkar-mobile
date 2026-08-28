@@ -18,12 +18,22 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    lint { abortOnError = true; checkDependencies = true }
+    lint {
+        abortOnError = true
+        checkDependencies = true
+        disable += setOf(
+            "GradleDependency",
+            "AndroidGradlePluginVersion",
+            "NewerVersionAvailable",
+            "OldTargetApi",
+        )
+    }
 }
 
 dependencies {
     implementation(project(":domain"))
     implementation(project(":core"))
+    implementation(project(":designsystem"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

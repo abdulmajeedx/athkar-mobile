@@ -17,6 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = "athkar"
 
 include(":core")
+include(":designsystem")
 include(":domain")
 include(":data")
 include(":sync")

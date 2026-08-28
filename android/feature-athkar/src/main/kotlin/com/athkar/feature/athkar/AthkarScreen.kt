@@ -1,5 +1,7 @@
 package com.athkar.feature.athkar
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,188 +13,293 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.core.domain.AdhkarReminder
+import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.Sizing
+import com.athkar.designsystem.Spacing
 import com.athkar.feature.athkar.AthkarViewModel.Intent
 import com.athkar.feature.athkar.AthkarViewModel.UiState
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.hilt.navigation.compose.hiltViewModel
 
 /**
- * Adhkar (remembrances) home screen. Renders the four mandatory states — skeleton, empty, error,
- * success — plus a persistent offline banner showing locally-held data. The screen reads only the
- * local reactive [UiState] flow; it never touches a network response. All colors/dimensions come
- * from [Tokens]. Touch targets >= 48dp with >= 8dp separation.
+ * The bundled collection, two levels deep: the chapter index, then the readings of one chapter.
+ *
+ * A flat list is the obvious alternative and the wrong one — the collection runs to hundreds of
+ * readings across 132 chapters, and finding "أذكار النوم" by scrolling past all of them is not
+ * finding it. Tapping a reading advances its tally and wraps back to zero at the target, which is
+ * the whole interaction the app exists for.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AthkarRoute(
-    onBack: () -> Unit,
-    viewModel: AthkarViewModel = hiltViewModel(),
-) {
+fun AthkarRoute(viewModel: AthkarViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    AthkarScreen(
-        state = state,
-        onIntent = viewModel::dispatch,
-        onBack = onBack,
-    )
+    AthkarScreen(state = state, onIntent = viewModel::dispatch)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AthkarScreen(
-    state: UiState,
-    onIntent: (Intent) -> Unit,
-    onBack: () -> Unit,
-) {
-    Surface(modifier = Modifier.fillMaxSize(), color = Tokens.background) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            TopAppBar(
-                title = { Text("الأذكار", style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
-                    }
-                },
-            )
-
-            if (state.isOffline) {
-                OfflineBanner(lastSyncAt = state.lastSyncAtMillis)
+private fun AthkarScreen(state: UiState, onIntent: (Intent) -> Unit) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        when {
+            state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                CircularProgressIndicator()
             }
 
-            when {
-                state.isLoading -> Skeleton()
-                state.error != null -> ErrorState(state.error!!, onRetry = { onIntent(Intent.Refresh) })
-                state.items.isEmpty() -> EmptyState(onCreate = { })
-                else -> ListState(state.items, onIntent)
+            state.openChapter != null -> {
+                // System back closes the chapter before it leaves the tab.
+                BackHandler { onIntent(Intent.CloseChapter) }
+                ChapterScreen(state = state, onIntent = onIntent)
             }
+
+            else -> ChapterIndex(state = state, onIntent = onIntent)
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OfflineBanner(lastSyncAt: Long?) {
-    Surface(color = Tokens.offlineAmber) {
-        Text(
-            text = "وضع عدم الاتصال — آخر مزامنة: ${lastSyncAt?.let { java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(it)) } ?: "—"}",
-            color = Tokens.onPrimary,
-            style = MaterialTheme.typography.bodyMedium,
+private fun ChapterIndex(state: UiState, onIntent: (Intent) -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(title = { Text("الأذكار", style = MaterialTheme.typography.titleLarge) })
+
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = { onIntent(Intent.Search(it)) },
+            label = { Text("ابحث في الأبواب") },
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(Tokens.sp2),
+                .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         )
-    }
-}
 
-@Composable
-private fun Skeleton() {
-    Column(modifier = Modifier.padding(Tokens.sp4), verticalArrangement = Arrangement.spacedBy(Tokens.sp4)) {
-        repeat(6) {
+        if (state.chapters.isEmpty()) {
             Box(
                 Modifier
-                    .fillMaxWidth()
-                    .height(Tokens.sp8)
-                    .padding(Tokens.sp1),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator(modifier = Modifier.size(Tokens.sp4)) }
-        }
-    }
-}
-
-@Composable
-private fun ErrorState(message: String, onRetry: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(Tokens.sp6),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(message, style = MaterialTheme.typography.bodyLarge, color = Tokens.textSecondary)
-        Spacer(Modifier.height(Tokens.sp4))
-        Button(onClick = onRetry) { Text("إعادة المحاولة") }
-    }
-}
-
-@Composable
-private fun EmptyState(onCreate: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(Tokens.sp6),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("لا توجد أذكار بعد", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(Tokens.sp2))
-        Text("أضف ذكرك الأول للبدء", color = Tokens.textSecondary)
-        Spacer(Modifier.height(Tokens.sp4))
-        Button(onClick = onCreate) { Text("أضف ذكر") }
-    }
-}
-
-@Composable
-private fun ListState(items: List<AdhkarReminder>, onIntent: (Intent) -> Unit) {
-    LazyColumn(
-        contentPadding = PaddingValues(Tokens.sp4),
-        verticalArrangement = Arrangement.spacedBy(Tokens.sp2),
-    ) {
-        items(items, key = { it.id }) { item ->
-            ReminderRow(item) {
-                onIntent(Intent.TogglePinned(item.id))
+                    .fillMaxSize()
+                    .padding(Spacing.xxl),
+                Alignment.Center,
+            ) {
+                Text(
+                    "لا يوجد باب يطابق بحثك",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
             }
+            return@Column
         }
-    }
-}
 
-@Composable
-private fun ReminderRow(item: AdhkarReminder, onTogglePin: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(Tokens.elev1),
-        color = Tokens.surface,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(Tokens.sp4),
-            verticalAlignment = Alignment.CenterVertically,
+        LazyColumn(
+            contentPadding = PaddingValues(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                bottom = Spacing.xxl,
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(item.title ?: "بلا عنوان", style = MaterialTheme.typography.titleMedium)
-                item.body?.let { body ->
-                    Text(
-                        body,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Tokens.textSecondary,
-                        maxLines = 2,
+            if (state.favourites.isNotEmpty() && state.query.isBlank()) {
+                item(key = AthkarViewModel.FAVOURITES_KEY) {
+                    ChapterRow(
+                        title = AthkarViewModel.FAVOURITES_TITLE,
+                        count = state.favourites.size,
+                        highlighted = true,
+                        onClick = { onIntent(Intent.OpenFavourites) },
                     )
                 }
-                item.targetCount?.let { count ->
-                    Text("التكرار: $count", style = MaterialTheme.typography.bodySmall, color = Tokens.textSecondary)
-                }
             }
-            IconButton(
-                onClick = onTogglePin,
-                modifier = Modifier.size(Tokens.touchTarget),
-            ) {
-                Icon(
-                    Icons.Default.PushPin,
-                    contentDescription = if (item.pinned == true) "إلغاء التثبيت" else "تثبيت",
-                    tint = if (item.pinned == true) Tokens.primary else Tokens.textSecondary,
+            items(state.chapters, key = { it.key }) { chapter ->
+                ChapterRow(
+                    title = chapter.title,
+                    count = chapter.itemCount,
+                    highlighted = false,
+                    onClick = { onIntent(Intent.OpenChapter(chapter.key)) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChapterRow(title: String, count: Int, highlighted: Boolean, onClick: () -> Unit) {
+    val accents = LocalAthkarAccents.current
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(Spacing.lg),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (highlighted) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = null,
+                    tint = accents.gold,
+                    modifier = Modifier.size(Sizing.iconSm),
+                )
+                Spacer(Modifier.width(Spacing.sm))
+            }
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                count.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChapterScreen(state: UiState, onIntent: (Intent) -> Unit) {
+    val chapter = state.openChapter ?: return
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(chapter.title, style = MaterialTheme.typography.titleMedium) },
+            navigationIcon = {
+                IconButton(onClick = { onIntent(Intent.CloseChapter) }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                }
+            },
+        )
+
+        if (state.openItems.isEmpty()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(Spacing.xxl),
+                Alignment.Center,
+            ) {
+                Text(
+                    "لم تضف أي ذكر إلى المفضلة بعد",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            return@Column
+        }
+
+        LazyColumn(
+            contentPadding = PaddingValues(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                bottom = Spacing.xxl,
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            items(state.openItems, key = { it.id }) { item ->
+                DhikrCard(
+                    item = item,
+                    count = state.counters[item.id] ?: 0,
+                    onCount = { onIntent(Intent.Count(item.id, item.targetCount ?: 1)) },
+                    onTogglePin = { onIntent(Intent.TogglePinned(item.id)) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DhikrCard(
+    item: AdhkarReminder,
+    count: Int,
+    onCount: () -> Unit,
+    onTogglePin: () -> Unit,
+) {
+    val accents = LocalAthkarAccents.current
+    val target = item.targetCount ?: 1
+    val isComplete = count >= target
+
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isComplete) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCount),
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            Text(
+                item.body ?: item.title.orEmpty(),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            Spacer(Modifier.height(Spacing.md))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (target > 1) "$count / $target" else "$count",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isComplete) accents.gold else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(Spacing.md))
+                LinearProgressIndicator(
+                    progress = { (count.toFloat() / target.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                    color = if (isComplete) accents.gold else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp),
+                )
+                IconButton(onClick = onTogglePin, modifier = Modifier.size(Sizing.touchTarget)) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = if (item.pinned == true) {
+                            "إزالة من المفضلة"
+                        } else {
+                            "إضافة إلى المفضلة"
+                        },
+                        tint = if (item.pinned == true) {
+                            accents.gold
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
+                    )
+                }
             }
         }
     }
