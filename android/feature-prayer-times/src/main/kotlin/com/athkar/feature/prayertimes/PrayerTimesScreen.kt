@@ -29,10 +29,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -44,6 +46,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -108,6 +111,7 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
         onSelectMadhab = viewModel::selectMadhab,
         onSetNotificationsEnabled = viewModel::setNotificationsEnabled,
         onTogglePrayerNotification = viewModel::togglePrayerNotification,
+        onSetIqamaMinutes = viewModel::setIqamaMinutes,
         onDismissError = viewModel::dismissLocationError,
     )
 }
@@ -124,6 +128,7 @@ private fun PrayerTimesScreen(
     onSelectMadhab: (Madhab) -> Unit,
     onSetNotificationsEnabled: (Boolean) -> Unit,
     onTogglePrayerNotification: (Prayer) -> Unit,
+    onSetIqamaMinutes: (Prayer, Int) -> Unit,
     onDismissError: () -> Unit,
 ) {
     var showCityPicker by remember { mutableStateOf(false) }
@@ -157,6 +162,10 @@ private fun PrayerTimesScreen(
                 } else {
                     PrayerList(state = state, countdown = countdown)
                 }
+                IqamaSettings(
+                    iqamaMinutes = state.iqamaMinutes,
+                    onSet = onSetIqamaMinutes,
+                )
                 NotificationSettings(
                     enabled = state.notificationsEnabled,
                     notifiedPrayers = state.notifiedPrayers,
@@ -326,6 +335,62 @@ private fun HeroCard(
                     )
                 }
             }
+
+            CurrentPrayerBand(countdown = countdown, zone = zone)
+        }
+    }
+}
+
+/**
+ * What is happening *now*, under the countdown to what is next.
+ *
+ * Between the adhan and the iqama this is the only number that matters, so it is given the emphasis;
+ * once the iqama has passed it becomes the time elapsed since the call, which is the difference
+ * between "I still have a moment" and "I have missed the congregation".
+ */
+@Composable
+private fun CurrentPrayerBand(
+    countdown: PrayerTimesViewModel.Countdown,
+    zone: java.time.ZoneId,
+) {
+    val current = countdown.current ?: return
+    val accents = LocalAthkarAccents.current
+
+    Spacer(Modifier.height(Spacing.lg))
+    HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+    Spacer(Modifier.height(Spacing.md))
+
+    val untilIqama = countdown.untilIqama
+    if (untilIqama != null) {
+        Text(
+            "إقامة ${current.arabicName} بعد",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.7f),
+        )
+        Text(
+            Formatting.countdown(untilIqama),
+            style = MaterialTheme.typography.headlineMedium,
+            color = accents.gold,
+        )
+        countdown.iqamaAt?.let {
+            Text(
+                Formatting.time(it, zone),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+        }
+    } else {
+        countdown.sinceCurrent?.let { elapsed ->
+            Text(
+                "مضى على أذان ${current.arabicName}",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+            Text(
+                Formatting.countdown(elapsed),
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White.copy(alpha = 0.9f),
+            )
         }
     }
 }
@@ -755,4 +820,74 @@ private fun openExactAlarmSettings(context: Context) {
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     // Some OEM builds ship without this settings screen; a missing activity must not crash the app.
     runCatching { context.startActivity(intent) }
+}
+
+/**
+ * How long after each adhan the congregation stands.
+ *
+ * There is nothing to calculate here — it is a decision each mosque makes — so the app ships the
+ * customary gaps and lets the user correct them to their own. Sunrise is absent because it has no
+ * congregation to call.
+ */
+@Composable
+private fun IqamaSettings(
+    iqamaMinutes: Map<Prayer, Int>,
+    onSet: (Prayer, Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Text(
+            "وقت الإقامة بعد الأذان",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(vertical = Spacing.sm)) {
+                Prayer.entries.filter { it != Prayer.SUNRISE }.forEachIndexed { index, prayer ->
+                    val minutes = iqamaMinutes[prayer] ?: 0
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = Sizing.touchTarget)
+                            .padding(horizontal = Spacing.lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            prayer.arabicName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = { onSet(prayer, (minutes - 5).coerceAtLeast(0)) },
+                            enabled = minutes > 0,
+                            modifier = Modifier.size(Sizing.touchTarget),
+                        ) {
+                            Icon(Icons.Default.Remove, contentDescription = "أنقص خمس دقائق")
+                        }
+                        Text(
+                            if (minutes == 0) "—" else "$minutes د",
+                            style = MaterialTheme.typography.titleSmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.width(Spacing.huge),
+                        )
+                        IconButton(
+                            onClick = { onSet(prayer, minutes + 5) },
+                            modifier = Modifier.size(Sizing.touchTarget),
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "زد خمس دقائق")
+                        }
+                    }
+                    if (index != Prayer.entries.size - 2) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.padding(horizontal = Spacing.lg),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

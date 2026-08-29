@@ -3,6 +3,7 @@ package com.athkar.feature.athkar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.athkar.core.domain.AdhkarReminder
+import com.athkar.designsystem.ReadingSize
 import com.athkar.domain.AdhkarRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -43,6 +44,7 @@ class AthkarViewModel @Inject constructor(
         val openItems: List<AdhkarReminder> = emptyList(),
         val query: String = "",
         val counters: Map<String, Int> = emptyMap(),
+        val readingSize: ReadingSize = ReadingSize.MEDIUM,
         val isLoading: Boolean = true,
     )
 
@@ -53,18 +55,21 @@ class AthkarViewModel @Inject constructor(
         data class Search(val query: String) : Intent
         data class Count(val id: String, val target: Int) : Intent
         data class TogglePinned(val id: String) : Intent
+        data class SetReadingSize(val size: ReadingSize) : Intent
     }
 
     private val openChapterKey = MutableStateFlow<String?>(null)
     private val query = MutableStateFlow("")
     private val counters = MutableStateFlow<Map<String, Int>>(emptyMap())
+    private val readingSize = MutableStateFlow(ReadingSize.MEDIUM)
 
     val uiState: StateFlow<UiState> = combine(
         adhkarRepository.observeAll(),
         openChapterKey,
         query,
         counters,
-    ) { items, chapterKey, searchQuery, counts ->
+        readingSize,
+    ) { items, chapterKey, searchQuery, counts, size ->
         // Chapter order comes from catOrder, which the bundle assigns as chapterIndex * 1000 + n,
         // so first-seen order over the sorted list is the published order of Hisn al-Muslim.
         val grouped = LinkedHashMap<String, MutableList<AdhkarReminder>>()
@@ -97,6 +102,7 @@ class AthkarViewModel @Inject constructor(
             },
             query = searchQuery,
             counters = counts,
+            readingSize = size,
             isLoading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
@@ -109,6 +115,7 @@ class AthkarViewModel @Inject constructor(
             is Intent.Search -> query.value = intent.query
             is Intent.Count -> count(intent.id, intent.target)
             is Intent.TogglePinned -> viewModelScope.launch { togglePinned(intent.id) }
+            is Intent.SetReadingSize -> readingSize.value = intent.size
         }
     }
 

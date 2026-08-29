@@ -37,7 +37,11 @@ data class PrayerPreferences(
     val place: Place? = null,
     val notificationsEnabled: Boolean = false,
     val notifiedPrayers: Set<Prayer> = DEFAULT_NOTIFIED_PRAYERS,
+    val iqamaMinutes: Map<Prayer, Int> = DEFAULT_IQAMA_MINUTES,
 ) {
+    /** Minutes between the adhan and the iqama for [prayer]; zero when the prayer has none. */
+    fun iqamaFor(prayer: Prayer): Int = iqamaMinutes[prayer] ?: 0
+
     /**
      * The parameter set to hand the calculator: the method's published values, with the user's
      * madhab and — unless they chose one — the high-latitude rule appropriate to their latitude.
@@ -53,6 +57,19 @@ data class PrayerPreferences(
         val DEFAULT_NOTIFIED_PRAYERS: Set<Prayer> = setOf(
             Prayer.FAJR, Prayer.DHUHR, Prayer.ASR, Prayer.MAGHRIB, Prayer.ISHA,
         )
+
+        /**
+         * Customary gaps between the adhan and the iqama. There is no calculating these — they are
+         * a decision each mosque makes — so these are the common defaults and the user is expected
+         * to correct them to whatever their own mosque does. Maghrib is the short one everywhere.
+         */
+        val DEFAULT_IQAMA_MINUTES: Map<Prayer, Int> = mapOf(
+            Prayer.FAJR to 20,
+            Prayer.DHUHR to 15,
+            Prayer.ASR to 15,
+            Prayer.MAGHRIB to 5,
+            Prayer.ISHA to 15,
+        )
     }
 }
 
@@ -65,6 +82,7 @@ interface PrayerPreferencesRepository {
     suspend fun setPlace(place: Place)
     suspend fun setNotificationsEnabled(enabled: Boolean)
     suspend fun setNotifiedPrayers(prayers: Set<Prayer>)
+    suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int)
 }
 
 /** Port for a one-shot device location fix. Returns null when unavailable or not permitted. */

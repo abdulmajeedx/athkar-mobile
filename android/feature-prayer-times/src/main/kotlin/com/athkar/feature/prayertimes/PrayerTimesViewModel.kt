@@ -60,15 +60,28 @@ class PrayerTimesViewModel @Inject constructor(
         val needsPlace: Boolean = false,
         val notificationsEnabled: Boolean = false,
         val notifiedPrayers: Set<Prayer> = emptySet(),
+        val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
         val error: String? = null,
     )
 
-    /** The part that changes every second. */
+    /**
+     * The part that changes every second.
+     *
+     * Between the adhan and the iqama the countdown is the one the worshipper actually needs, so it
+     * takes over the display; afterwards it becomes the time elapsed since the call, which answers
+     * "have I missed it" at a glance.
+     */
     data class Countdown(
         val next: Prayer? = null,
         val nextAt: Instant? = null,
         val remaining: Duration? = null,
         val current: Prayer? = null,
+        val currentAt: Instant? = null,
+        /** Time since the current prayer's adhan. */
+        val sinceCurrent: Duration? = null,
+        /** Countdown to the iqama, while it is still ahead. */
+        val untilIqama: Duration? = null,
+        val iqamaAt: Instant? = null,
     )
 
     private val zone: ZoneId get() = ZoneId.systemDefault()
@@ -127,6 +140,7 @@ class PrayerTimesViewModel @Inject constructor(
                 gregorianDate = Formatting.gregorianDate(date),
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
+                iqamaMinutes = preferences.iqamaMinutes,
             )
         } catch (e: PolarDayException) {
             UiState(
@@ -148,11 +162,26 @@ class PrayerTimesViewModel @Inject constructor(
         if (state.rows.isEmpty()) return Countdown()
         val next = state.rows.firstOrNull { it.at.isAfter(now) }
         val current = state.rows.lastOrNull { !it.at.isAfter(now) }
+
+        // Sunrise has no congregation and so no iqama; treating it like the others would put a
+        // countdown on the screen for a prayer nobody is being called to.
+        val iqamaMinutes = current
+            ?.takeIf { it.prayer != Prayer.SUNRISE }
+            ?.let { state.iqamaMinutes[it.prayer] ?: 0 }
+            ?: 0
+        val iqamaAt = current
+            ?.takeIf { iqamaMinutes > 0 }
+            ?.at?.plus(iqamaMinutes.toLong(), java.time.temporal.ChronoUnit.MINUTES)
+
         return Countdown(
             next = next?.prayer,
             nextAt = next?.at,
             remaining = next?.let { Duration.between(now, it.at) },
             current = current?.prayer,
+            currentAt = current?.at,
+            sinceCurrent = current?.let { Duration.between(it.at, now) },
+            iqamaAt = iqamaAt,
+            untilIqama = iqamaAt?.takeIf { it.isAfter(now) }?.let { Duration.between(now, it) },
         )
     }
 
@@ -203,6 +232,10 @@ class PrayerTimesViewModel @Inject constructor(
             val updated = if (prayer in current) current - prayer else current + prayer
             preferencesRepository.setNotifiedPrayers(updated)
         }
+    }
+
+    fun setIqamaMinutes(prayer: Prayer, minutes: Int) {
+        viewModelScope.launch { preferencesRepository.setIqamaMinutes(prayer, minutes) }
     }
 
     fun dismissLocationError() {

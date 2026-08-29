@@ -44,3 +44,19 @@ val AthkarShapes = Shapes(
     large = RoundedCornerShape(24.dp),
     extraLarge = RoundedCornerShape(32.dp),
 )
+
+
+/**
+ * Reading size for the adhkar text.
+ *
+ * A fixed size cannot serve both a reader holding the phone at arm's length after Fajr and one
+ * reading closely at night, and Arabic with full tashkeel loses its marks first as text shrinks.
+ * The leading scales with the size rather than staying fixed, because the marks sit above and below
+ * the baseline and it is the gap between lines, not the glyph height, that decides legibility.
+ */
+enum class ReadingSize(val label: String, val fontSp: Int, val lineHeightSp: Int) {
+    SMALL("صغير", 17, 34),
+    MEDIUM("متوسط", 20, 42),
+    LARGE("كبير", 24, 50),
+    HUGE("كبير جدًا", 28, 58),
+}

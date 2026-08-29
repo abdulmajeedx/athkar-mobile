@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -45,6 +46,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
             place = prefs.toPlace(),
             notificationsEnabled = prefs[KEY_NOTIFICATIONS_ENABLED] ?: false,
             notifiedPrayers = prefs[KEY_NOTIFIED_PRAYERS].toPrayers(),
+            iqamaMinutes = prefs.toIqamaMinutes(),
         )
     }
 
@@ -87,6 +89,12 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int) {
+        context.prayerDataStore.edit { prefs ->
+            prefs[iqamaKey(prayer)] = minutes.coerceIn(0, MAX_IQAMA_MINUTES)
+        }
+    }
+
     // A value written by another version of the app must not crash this one; an unrecognised name
     // falls back to the default exactly as an absent one does.
     private fun String?.toMethod(): CalculationMethod =
@@ -103,6 +111,15 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         contains(NONE_SELECTED) -> emptySet()
         else -> mapNotNull { name -> Prayer.entries.firstOrNull { it.name == name } }.toSet()
     }
+
+    /** One key per prayer rather than an encoded map: a single malformed entry cannot lose the rest. */
+    private fun iqamaKey(prayer: Prayer) = intPreferencesKey("iqama_${prayer.name}")
+
+    private fun Preferences.toIqamaMinutes(): Map<Prayer, Int> =
+        Prayer.entries.mapNotNull { prayer ->
+            val stored = this[iqamaKey(prayer)] ?: PrayerPreferences.DEFAULT_IQAMA_MINUTES[prayer]
+            stored?.let { prayer to it.coerceIn(0, MAX_IQAMA_MINUTES) }
+        }.toMap()
 
     private fun Preferences.toPlace(): Place? {
         val latitude = this[KEY_LATITUDE] ?: return null
@@ -129,5 +146,8 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val KEY_NOTIFIED_PRAYERS = stringSetPreferencesKey("notified_prayers")
         const val NONE_SELECTED = "__none__"
+
+        /** An hour is already implausible; the cap only keeps a bad write from rendering absurdly. */
+        const val MAX_IQAMA_MINUTES = 60
     }
 }
