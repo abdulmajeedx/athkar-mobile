@@ -88,6 +88,14 @@ mkdir -p "$SHOTS_DIR"
 
 capture() {
     local name=$1
+    # Wait for the window to actually be the resumed one before shooting. A fixed sleep caught the
+    # launcher icon still on screen more than once.
+    for _ in $(seq 1 10); do
+        if adb shell dumpsys activity activities 2>/dev/null | grep -qE "mResumedActivity.*$APP_ID"; then
+            break
+        fi
+        sleep 1
+    done
     sleep 2
     adb exec-out screencap -p > "$SHOTS_DIR/$name.png" 2>/dev/null || true
     if [ -s "$SHOTS_DIR/$name.png" ]; then
