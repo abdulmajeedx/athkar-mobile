@@ -73,7 +73,8 @@ enum PrayerNotificationScheduler {
         let content = UNMutableNotificationContent()
         content.title = "حان الآن وقت صلاة \(prayer.arabicName)"
         content.body = [Formatting.time(date), placeName].compactMap { $0 }.joined(separator: " — ")
-        content.sound = .default
+        // Silent by request: the alert appears and vibrates, and makes no sound.
+        content.sound = nil
 
         let components = calendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second], from: date

@@ -3,6 +3,7 @@ package com.athkar.feature.prayertimes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.PatternedSurface
+import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
 import com.athkar.feature.prayertimes.QiblaViewModel.UiState
 import kotlin.math.abs
@@ -124,15 +127,22 @@ private fun QiblaContent(state: UiState) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        CompassDial(
-            rotationDegrees = if (heading == null) 0f else rotation,
-            qiblaBearing = qibla.toFloat(),
-            offAngle = offAngle,
-            isAligned = isAligned,
+        PatternedSurface(
+            sky = SkyPhase.NIGHT,
+            shape = CircleShape,
+            patternAlpha = 0.07f,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-        )
+        ) {
+            CompassDial(
+                rotationDegrees = if (heading == null) 0f else rotation,
+                qiblaBearing = qibla.toFloat(),
+                offAngle = offAngle,
+                isAligned = isAligned,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Card(
             shape = MaterialTheme.shapes.large,

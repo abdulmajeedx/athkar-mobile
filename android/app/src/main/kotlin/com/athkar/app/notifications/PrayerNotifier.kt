@@ -6,8 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import com.athkar.app.MainActivity
 import com.athkar.app.R
 import com.athkar.core.prayer.Prayer
@@ -18,10 +16,13 @@ import javax.inject.Singleton
 /**
  * Posts the prayer-time alert.
  *
- * The channel uses alarm audio attributes and the device's alarm tone: a prayer alert that the
- * ringer's silent mode swallows has failed at the one thing it exists for. Everything about the
- * channel — tone, vibration, importance — remains the user's to change in system settings, which is
- * the only place Android allows it to change after the channel is created.
+ * The alert is silent: it vibrates and appears, and makes no sound. Importance stays high so it
+ * still surfaces over whatever is on screen — a prayer time the user has to go looking for is not
+ * an alert.
+ *
+ * A channel's sound is fixed once Android has created it, so removing the tone meant a new channel
+ * id and deleting the old one. Anything the user had customised on the old channel goes with it;
+ * there is no API that would have let it carry over.
  */
 @Singleton
 class PrayerNotifier @Inject constructor(
@@ -41,17 +42,15 @@ class PrayerNotifier @Inject constructor(
             "أوقات الصلاة",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "تنبيه عند دخول وقت كل صلاة"
+            description = "تنبيه صامت عند دخول وقت كل صلاة"
             enableVibration(true)
-            setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build(),
-            )
+            setSound(null, null)
         }
         manager.createNotificationChannel(channel)
+
+        // The channel that carried the alarm tone. Left in place it would keep appearing in the
+        // system settings as a second, sounding "أوقات الصلاة" the user never asked for.
+        manager.deleteNotificationChannel(LEGACY_SOUNDING_CHANNEL_ID)
     }
 
     /**
@@ -84,7 +83,8 @@ class PrayerNotifier @Inject constructor(
     }
 
     private companion object {
-        const val CHANNEL_ID = "prayer_times"
+        const val CHANNEL_ID = "prayer_times_silent"
+        const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
         const val NOTIFICATION_ID_BASE = 4100
     }
 }

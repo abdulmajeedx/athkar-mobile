@@ -77,7 +77,9 @@ import com.athkar.core.prayer.CalculationMethod
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
 import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.Sizing
+import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
 import com.athkar.domain.Cities
 import com.athkar.domain.Place
@@ -237,18 +239,18 @@ private fun HeroCard(
     val accents = LocalAthkarAccents.current
     val zone = remember { ZoneId.systemDefault() }
 
-    Card(
+    // The sky of the prayer that has begun. An app that tells the time by the sun and stays one
+    // colour all day is throwing away the most obvious thing it knows.
+    val sky = SkyPhase.forPrayerOrdinal(countdown.current?.ordinal)
+
+    PatternedSurface(
+        sky = sky,
         shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
-                .background(
-                    Brush.verticalGradient(
-                        listOf(accents.nightGradientTop, accents.nightGradientBottom),
-                    ),
-                )
+                .fillMaxWidth()
                 .padding(Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -278,7 +280,7 @@ private fun HeroCard(
                         Icon(
                             Icons.Default.LocationOn,
                             contentDescription = "تحديد موقعي",
-                            tint = accents.gold,
+                            tint = sky.accent,
                             modifier = Modifier.size(Sizing.iconSm),
                         )
                     }
@@ -317,7 +319,7 @@ private fun HeroCard(
                 Text(
                     next.arabicName,
                     style = MaterialTheme.typography.displaySmall,
-                    color = accents.gold,
+                    color = sky.accent,
                 )
                 countdown.nextAt?.let {
                     Text(
@@ -336,7 +338,7 @@ private fun HeroCard(
                 }
             }
 
-            CurrentPrayerBand(countdown = countdown, zone = zone)
+            CurrentPrayerBand(countdown = countdown, zone = zone, sky = sky)
         }
     }
 }
@@ -352,9 +354,9 @@ private fun HeroCard(
 private fun CurrentPrayerBand(
     countdown: PrayerTimesViewModel.Countdown,
     zone: java.time.ZoneId,
+    sky: SkyPhase,
 ) {
     val current = countdown.current ?: return
-    val accents = LocalAthkarAccents.current
 
     Spacer(Modifier.height(Spacing.lg))
     HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
@@ -370,7 +372,7 @@ private fun CurrentPrayerBand(
         Text(
             Formatting.countdown(untilIqama),
             style = MaterialTheme.typography.headlineMedium,
-            color = accents.gold,
+            color = sky.accent,
         )
         countdown.iqamaAt?.let {
             Text(

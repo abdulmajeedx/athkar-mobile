@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.core.domain.AdhkarReminder
 import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.PatternedSurface
+import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.ReadingSize
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
@@ -93,7 +96,29 @@ private fun AthkarScreen(state: UiState, onIntent: (Intent) -> Unit) {
 @Composable
 private fun ChapterIndex(state: UiState, onIntent: (Intent) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("الأذكار", style = MaterialTheme.typography.titleLarge) })
+        // The same patterned sky as the prayer screen, so opening a chapter does not feel like
+        // arriving in a different app.
+        PatternedSurface(
+            sky = SkyPhase.NIGHT,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.xl),
+            ) {
+                Text(
+                    "الأذكار",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Color.White,
+                )
+                Text(
+                    "حصن المسلم",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.65f),
+                )
+            }
+        }
 
         OutlinedTextField(
             value = state.query,
