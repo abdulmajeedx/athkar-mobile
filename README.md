@@ -206,7 +206,6 @@ breaking change.
 | [release-plan.md](docs/operations/release-plan.md) | Versioning, branching, feature flags, kill switch, release gates, gradual rollout, rollback |
 | [runbooks.md](docs/operations/runbooks.md) | Incident response process, generic rollback checklist, per-alert runbooks |
 | [observability.md](docs/operations/observability.md) | Telemetry pipeline, distributed tracing, 8-metric operational dashboard, analytics event dictionary |
-| [signing-key.md](docs/operations/signing-key.md) | Backing up and restoring the release signing key — the one artefact in the project that cannot be rebuilt |
 | [store-assets.md](docs/operations/store-assets.md) | App Store / Play listings, signing & provisioning, compliance notes, CI/CD pipeline |
 
 ---
