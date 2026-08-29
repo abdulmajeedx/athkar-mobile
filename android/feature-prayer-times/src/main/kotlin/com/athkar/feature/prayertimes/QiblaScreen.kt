@@ -7,11 +7,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
@@ -45,11 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.athkar.core.prayer.QiblaBySun
 import com.athkar.designsystem.LocalAthkarAccents
 import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
 import com.athkar.feature.prayertimes.QiblaViewModel.UiState
+import java.time.ZoneId
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -198,16 +202,99 @@ private fun QiblaContent(state: UiState) {
                 )
                 if (state.needsCalibration && state.hasCompass) {
                     Spacer(Modifier.height(Spacing.sm))
-                    Text(
-                        "دقّة البوصلة منخفضة — حرّك الجهاز على شكل الرقم 8 لمعايرته.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
+                    Warning("دقّة البوصلة منخفضة — حرّك الجهاز على شكل الرقم 8 لمعايرته.")
+                }
+                if (state.isFieldDisturbed) {
+                    Spacer(Modifier.height(Spacing.sm))
+                    Warning(
+                        "المجال المغناطيسي حولك مضطرب — ابتعد عن المعادن والحوامل المغناطيسية، " +
+                            "أو استعمل طريقة الشمس أدناه."
                     )
                 }
+                if (state.isTooTilted) {
+                    Spacer(Modifier.height(Spacing.sm))
+                    Warning("أمسك الجهاز مستويًا؛ الميل الشديد يفسد قراءة البوصلة.")
+                }
+            }
+
+            SunMethodCard(alignment = state.sunAlignment)
+        }
+    }
+}
+
+/**
+ * The sun as a qibla reference, and the reason this screen has one.
+ *
+ * A magnetometer can be tens of degrees wrong beside anything ferrous and reports those degrees with
+ * complete confidence — it has no way to know it is lying. The sun cannot be pulled off course by a
+ * speaker magnet, and its position is computed here from the same solar model the prayer times come
+ * from. At the moment below, facing the sun is facing the Kaaba to a fraction of a degree.
+ */
+@Composable
+private fun SunMethodCard(alignment: QiblaBySun?) {
+    if (alignment == null || (alignment.facingSun == null && alignment.facingShadow == null)) return
+    val zone = remember { ZoneId.systemDefault() }
+
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            Text(
+                "القبلة بالشمس — الأدقّ",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            Text(
+                "لا يشوّشها معدن ولا مغناطيس، وتُحسب فلكيًا بدقة أجزاء من الدرجة.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            alignment.facingSun?.let {
+                Spacer(Modifier.height(Spacing.md))
+                SunMoment(
+                    time = Formatting.time(it, zone),
+                    instruction = "استقبل الشمس في هذه اللحظة فتكون مستقبلًا القبلة تمامًا.",
+                )
+            }
+            alignment.facingShadow?.let {
+                Spacer(Modifier.height(Spacing.md))
+                SunMoment(
+                    time = Formatting.time(it, zone),
+                    instruction = "ظلّ أي شيء قائم في هذه اللحظة يشير إلى القبلة.",
+                )
             }
         }
     }
+}
+
+@Composable
+private fun SunMoment(time: String, instruction: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            time,
+            style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+            color = LocalAthkarAccents.current.gold,
+        )
+        Spacer(Modifier.width(Spacing.md))
+        Text(
+            instruction,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun Warning(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable
