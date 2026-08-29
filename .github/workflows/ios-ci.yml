@@ -5,6 +5,10 @@ name: iOS build & test
 # are unsigned.
 on:
   push:
+    # Branches only: a tag push matches every path filter, so publishing a release used to fire a
+    # full iOS build for a commit already tested on the branch it came from.
+    branches:
+      - main
     paths:
       - "ios/**"
       - ".github/workflows/ios-ci.yml"
