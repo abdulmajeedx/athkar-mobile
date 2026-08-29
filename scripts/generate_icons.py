@@ -62,18 +62,30 @@ ANDROID_VIEWPORT = 108.0
 ANDROID_DESIGN_RADIUS = 29.0
 
 
-def square_points(centre: float, radius: float, rotation_degrees: float) -> list[tuple[float, float]]:
-    """Corners of a square inscribed in a circle, rotated about its centre."""
+def square_points_at(
+    cx: float, cy: float, radius: float, rotation_degrees: float
+) -> list[tuple[float, float]]:
+    """Corners of a square inscribed in a circle at (cx, cy), rotated about that centre."""
     return [
         (
-            centre + radius * math.cos(math.radians(rotation_degrees + angle)),
-            centre + radius * math.sin(math.radians(rotation_degrees + angle)),
+            cx + radius * math.cos(math.radians(rotation_degrees + angle)),
+            cy + radius * math.sin(math.radians(rotation_degrees + angle)),
         )
         for angle in (45, 135, 225, 315)
     ]
 
 
+def square_points(centre: float, radius: float, rotation_degrees: float) -> list[tuple[float, float]]:
+    """The same, on a square canvas where both coordinates of the centre are equal."""
+    return square_points_at(centre, centre, radius, rotation_degrees)
+
+
 # --- iOS -----------------------------------------------------------------------------------------
+
+def lattice_centres(size: float) -> list[tuple[float, float]]:
+    """Star centres of a girih tile: the four corners and the middle, as the pattern in the app."""
+    return [(0.0, 0.0), (size, 0.0), (0.0, size), (size, size), (size / 2, size / 2)]
+
 
 def draw_ios(size: int) -> Image.Image:
     image = Image.new("RGB", (size, size), NIGHT_TOP)
@@ -89,7 +101,24 @@ def draw_ios(size: int) -> Image.Image:
     centre = size / 2
     design = size * IOS_DESIGN_RADIUS
 
+    # A fragment of the app's own lattice, dim, behind the mark — the same geometry the header and
+    # the hero are patterned with, so the icon is a piece of the app rather than a picture of it.
+    lattice_radius = size * 0.20
+    lattice_stroke = max(round(size * 0.008), 1)
+    for cx, cy in lattice_centres(float(size)):
+        for rotation in (0, 45):
+            draw.polygon(
+                square_points_at(cx, cy, lattice_radius, rotation),
+                outline=GOLD_DEEP,
+                width=lattice_stroke,
+            )
+
+    # The mark itself, bright and centred, reads at the size a launcher actually draws it.
     ring = design * RING_RADIUS
+    draw.ellipse(
+        [centre - ring, centre - ring, centre + ring, centre + ring],
+        fill=NIGHT_BOTTOM,
+    )
     draw.ellipse(
         [centre - ring, centre - ring, centre + ring, centre + ring],
         outline=GOLD_DEEP,

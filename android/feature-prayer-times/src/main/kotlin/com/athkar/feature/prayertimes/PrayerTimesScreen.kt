@@ -438,37 +438,44 @@ private fun PrayerList(state: UiState, countdown: Countdown) {
 @Composable
 private fun PrayerRowItem(prayer: Prayer, time: String, isNext: Boolean, isPast: Boolean) {
     val accents = LocalAthkarAccents.current
-    val background = if (isNext) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     // Past prayers fade rather than disappear: the schedule stays readable as a whole day.
-    val contentAlpha = if (isPast && !isNext) 0.45f else 1f
+    val contentAlpha = if (isPast && !isNext) 0.42f else 1f
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(background)
+            .background(
+                if (isNext) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+            )
             .heightIn(min = Sizing.touchTarget)
             .padding(horizontal = Spacing.lg, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // A spine on the leading edge for the next prayer, a dot for the others: one shape says
+        // "this one", the rest say "and these".
         Box(
             Modifier
-                .size(Spacing.sm)
+                .width(if (isNext) Sizing.hairline * 3 else Spacing.sm)
+                .height(if (isNext) Spacing.xxl else Spacing.sm)
                 .background(
-                    color = if (isNext) accents.gold else MaterialTheme.colorScheme.outline,
-                    shape = CircleShape,
+                    color = when {
+                        isNext -> accents.gold
+                        else -> MaterialTheme.colorScheme.outline.copy(alpha = contentAlpha)
+                    },
+                    shape = MaterialTheme.shapes.extraSmall,
                 ),
         )
         Spacer(Modifier.width(Spacing.md))
         Text(
             prayer.arabicName,
-            style = if (isNext) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+            style = if (isNext) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
             fontWeight = if (isNext) FontWeight.Bold else FontWeight.Normal,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
             modifier = Modifier.weight(1f),
         )
         Text(
             time,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
             fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium,
             color = if (isNext) {
                 MaterialTheme.colorScheme.onPrimaryContainer
@@ -487,11 +494,7 @@ private fun SettingsRow(
     onSelectMadhab: (Madhab) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Text(
-            "طريقة الحساب",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel("طريقة الحساب")
         AssistChip(
             onClick = onOpenMethodPicker,
             label = { Text(method.arabicName) },
@@ -505,12 +508,7 @@ private fun SettingsRow(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Text(
-            "وقت العصر",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = Spacing.sm),
-        )
+        SectionLabel("وقت العصر", modifier = Modifier.padding(top = Spacing.sm))
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             MadhabChip("الجمهور", madhab == Madhab.SHAFI) { onSelectMadhab(Madhab.SHAFI) }
             MadhabChip("الحنفي", madhab == Madhab.HANAFI) { onSelectMadhab(Madhab.HANAFI) }
@@ -739,11 +737,7 @@ private fun NotificationSettings(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Text(
-            "التنبيهات",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel("التنبيهات")
 
         Card(
             shape = MaterialTheme.shapes.large,
@@ -847,11 +841,7 @@ private fun IqamaSettings(
     onSet: (Prayer, Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Text(
-            "وقت الإقامة بعد الأذان",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel("وقت الإقامة بعد الأذان")
         Card(
             shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -902,4 +892,15 @@ private fun IqamaSettings(
             }
         }
     }
+}
+
+/** One heading style for every section, so the settings read as a list rather than as a pile. */
+@Composable
+private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier.padding(start = Spacing.xs),
+    )
 }

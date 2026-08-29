@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -218,69 +219,66 @@ private fun CompassDial(
     modifier: Modifier = Modifier,
 ) {
     val accents = LocalAthkarAccents.current
-    // The dial sits on the night disc, so every mark on it is drawn in light rather than in the
-    // scheme's on-surface colours, which are meant for the ivory page behind.
-    val ringColor = Color.White.copy(alpha = 0.35f)
+    // The dial sits on the night disc, so every mark is drawn in light rather than in the scheme's
+    // on-surface colours, which are meant for the ivory page behind it.
+    val hairline = Color.White.copy(alpha = 0.22f)
     val tickColor = Color.White.copy(alpha = 0.30f)
-    val cardinalColor = Color.White.copy(alpha = 0.85f)
+    val majorTick = Color.White.copy(alpha = 0.55f)
+    val cardinalColor = Color.White.copy(alpha = 0.90f)
     val northColor = Color(0xFFFF8A80)
-    val pointerColor = Color.White
-    val targetColor = if (isAligned) accents.gold else SkyPhase.NIGHT.accent
+    val needleColor = if (isAligned) accents.gold else SkyPhase.NIGHT.accent
+    val tailColor = Color.White.copy(alpha = 0.28f)
     val textMeasurer = rememberTextMeasurer()
 
-    val cardinalStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = cardinalColor)
-    val northStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = northColor)
-    val degreeStyle = TextStyle(fontSize = 10.sp, color = cardinalColor.copy(alpha = 0.7f))
+    val cardinalStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = cardinalColor)
+    val northStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = northColor)
+    val degreeStyle = TextStyle(fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f))
 
     Canvas(modifier = modifier) {
         val radius = size.minDimension / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
-        val ringRadius = radius * 0.84f
+        val rim = radius * 0.88f
 
-        drawCircle(
-            color = ringColor,
-            radius = ringRadius,
-            center = center,
-            style = Stroke(width = 2.dp.toPx()),
-        )
+        drawCircle(color = hairline, radius = rim, center = center, style = Stroke(1.5f.dp.toPx()))
+        drawCircle(color = hairline, radius = rim * 0.70f, center = center, style = Stroke(1f.dp.toPx()))
 
-        // The arc from where the phone points to where the qibla is: the size of the error, shown
-        // rather than left to be inferred from two marks.
+        // How far off the phone is, drawn as the arc between where it points and where the qibla is.
+        // Two marks leave the reader to estimate that gap; an arc states it.
         if (offAngle != null && !isAligned) {
-            val sweep = offAngle
             drawArc(
-                color = targetColor.copy(alpha = 0.25f),
+                color = needleColor.copy(alpha = 0.22f),
                 startAngle = -90f,
-                sweepAngle = sweep,
+                sweepAngle = offAngle,
                 useCenter = false,
-                topLeft = Offset(center.x - ringRadius, center.y - ringRadius),
-                size = Size(ringRadius * 2, ringRadius * 2),
-                style = Stroke(width = radius * 0.09f),
+                topLeft = Offset(center.x - rim, center.y - rim),
+                size = Size(rim * 2, rim * 2),
+                style = Stroke(width = radius * 0.07f),
             )
         }
-
-        drawPointer(center = center, radius = radius, color = pointerColor)
 
         rotate(degrees = rotationDegrees, pivot = center) {
             repeat(72) { index ->
                 val angle = index * 5f
-                val isMajor = index % 18 == 0
-                val isMinor = index % 6 == 0
-                if (!isMajor && !isMinor) return@repeat
-                val length = if (isMajor) radius * 0.11f else radius * 0.05f
+                val isCardinal = index % 18 == 0
+                val isMajor = index % 6 == 0
+                val length = when {
+                    isCardinal -> radius * 0.10f
+                    isMajor -> radius * 0.055f
+                    else -> radius * 0.028f
+                }
                 drawLine(
-                    color = if (isMajor) cardinalColor else tickColor.copy(alpha = 0.6f),
-                    start = center.polar(angle, ringRadius - length),
-                    end = center.polar(angle, ringRadius),
-                    strokeWidth = if (isMajor) 3.dp.toPx() else 1.5f.dp.toPx(),
+                    color = if (isCardinal) majorTick else tickColor,
+                    start = center.polar(angle, rim - length),
+                    end = center.polar(angle, rim),
+                    strokeWidth = if (isCardinal) 2.5f.dp.toPx() else 1f.dp.toPx(),
                 )
             }
 
-            // Degree labels every 30 degrees turn the dial into something readable, not decorative.
-            for (angle in 30 until 360 step 30) {
-                if (angle % 90 == 0) continue
+            // Only the quarters carry a number. Every thirty degrees turned the rim into a ruler
+            // and buried the four letters that actually orient the reader.
+            for (angle in listOf(45, 135, 225, 315)) {
                 val layout = textMeasurer.measure("$angle", degreeStyle)
-                val position = center.polar(angle.toFloat(), ringRadius - radius * 0.18f)
+                val position = center.polar(angle.toFloat(), rim - radius * 0.155f)
                 drawText(
                     textLayoutResult = layout,
                     topLeft = Offset(
@@ -291,10 +289,8 @@ private fun CompassDial(
             }
 
             listOf(0f to "ش", 90f to "ق", 180f to "ج", 270f to "غ").forEach { (angle, label) ->
-                // North is the reference every other reading hangs off, so it is the one that is
-                // coloured rather than merely bold.
                 val layout = textMeasurer.measure(label, if (angle == 0f) northStyle else cardinalStyle)
-                val position = center.polar(angle, ringRadius - radius * 0.19f)
+                val position = center.polar(angle, rim - radius * 0.175f)
                 drawText(
                     textLayoutResult = layout,
                     topLeft = Offset(
@@ -304,57 +300,71 @@ private fun CompassDial(
                 )
             }
 
-            drawQiblaMarker(
+            drawNeedle(
                 center = center,
-                radius = ringRadius,
+                radius = rim,
                 bearing = qiblaBearing,
-                color = targetColor,
+                color = needleColor,
+                tailColor = tailColor,
                 aligned = isAligned,
             )
         }
+
+        // Hub and the fixed mark, drawn outside the rotation: they belong to the phone, not the dial.
+        drawCircle(color = needleColor, radius = radius * 0.055f, center = center)
+        drawCircle(color = SkyPhase.NIGHT.bottom, radius = radius * 0.022f, center = center)
+        drawIndex(center = center, radius = radius, color = Color.White)
     }
 }
 
-/** The screen-fixed reference mark the user aligns the qibla marker with. */
-private fun DrawScope.drawPointer(center: Offset, radius: Float, color: Color) {
-    val top = Offset(center.x, center.y - radius * 0.96f)
-    drawLine(
-        color = color,
-        start = top,
-        end = Offset(center.x, center.y - radius * 0.72f),
-        strokeWidth = 4.dp.toPx(),
-    )
-    drawCircle(color = color, radius = 4.dp.toPx(), center = center)
-}
-
 /**
- * The direction of the Kaaba: a stem out to the rim and a solid block at its end, with a halo once
- * the phone is pointing at it. A plain dot reads as one more tick among seventy-two; a block that
- * grows a ring when you arrive is legible at a glance and while moving.
+ * A compass needle rather than a spoke: a tapered head to the rim and a short counterweight behind
+ * the hub. The taper is what makes the direction readable at a glance and while the phone moves —
+ * a line of even width reads as a radius, not as a pointer.
  */
-private fun DrawScope.drawQiblaMarker(
+private fun DrawScope.drawNeedle(
     center: Offset,
     radius: Float,
     bearing: Float,
     color: Color,
+    tailColor: Color,
     aligned: Boolean,
 ) {
+    val halfWidth = radius * 0.055f
+    val left = center.polar(bearing + 90f, halfWidth)
+    val right = center.polar(bearing - 90f, halfWidth)
     val tip = center.polar(bearing, radius * 0.90f)
-    drawLine(
-        color = color,
-        start = center.polar(bearing, radius * 0.22f),
-        end = center.polar(bearing, radius * 0.80f),
-        strokeWidth = 5.dp.toPx(),
-    )
+    val tail = center.polar(bearing + 180f, radius * 0.30f)
+
     if (aligned) {
-        drawCircle(color = color.copy(alpha = 0.25f), radius = 18.dp.toPx(), center = tip)
+        drawCircle(color = color.copy(alpha = 0.20f), radius = radius * 0.16f, center = tip)
     }
-    val block = 11.dp.toPx()
-    drawRoundRect(
+    drawPath(
+        path = Path().apply {
+            moveTo(tip.x, tip.y); lineTo(left.x, left.y); lineTo(right.x, right.y); close()
+        },
         color = color,
-        topLeft = Offset(tip.x - block, tip.y - block),
-        size = Size(block * 2, block * 2),
-        cornerRadius = CornerRadius(3.dp.toPx()),
+    )
+    drawPath(
+        path = Path().apply {
+            moveTo(tail.x, tail.y); lineTo(left.x, left.y); lineTo(right.x, right.y); close()
+        },
+        color = tailColor,
+    )
+}
+
+/** The fixed mark at the top: the direction the phone itself is facing, for the needle to meet. */
+private fun DrawScope.drawIndex(center: Offset, radius: Float, color: Color) {
+    val tipY = center.y - radius * 0.92f
+    val width = radius * 0.045f
+    drawPath(
+        path = Path().apply {
+            moveTo(center.x, tipY + width * 1.6f)
+            lineTo(center.x - width, tipY)
+            lineTo(center.x + width, tipY)
+            close()
+        },
+        color = color,
     )
 }
 
