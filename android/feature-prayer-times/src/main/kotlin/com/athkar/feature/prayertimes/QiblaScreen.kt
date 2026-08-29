@@ -218,13 +218,14 @@ private fun CompassDial(
     modifier: Modifier = Modifier,
 ) {
     val accents = LocalAthkarAccents.current
-    val ringColor = MaterialTheme.colorScheme.outlineVariant
-    val tickColor = MaterialTheme.colorScheme.outline
-    val cardinalColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val northColor = MaterialTheme.colorScheme.error
-    val pointerColor = MaterialTheme.colorScheme.primary
-    val targetColor = if (isAligned) accents.gold else MaterialTheme.colorScheme.secondary
-    val faceColor = MaterialTheme.colorScheme.surface
+    // The dial sits on the night disc, so every mark on it is drawn in light rather than in the
+    // scheme's on-surface colours, which are meant for the ivory page behind.
+    val ringColor = Color.White.copy(alpha = 0.35f)
+    val tickColor = Color.White.copy(alpha = 0.30f)
+    val cardinalColor = Color.White.copy(alpha = 0.85f)
+    val northColor = Color(0xFFFF8A80)
+    val pointerColor = Color.White
+    val targetColor = if (isAligned) accents.gold else SkyPhase.NIGHT.accent
     val textMeasurer = rememberTextMeasurer()
 
     val cardinalStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = cardinalColor)
@@ -236,9 +237,6 @@ private fun CompassDial(
         val center = Offset(size.width / 2f, size.height / 2f)
         val ringRadius = radius * 0.84f
 
-        // A filled face lifts the dial off the page and gives the ticks something to sit on; a bare
-        // outline reads as a diagram rather than an instrument.
-        drawCircle(color = faceColor, radius = ringRadius + radius * 0.06f, center = center)
         drawCircle(
             color = ringColor,
             radius = ringRadius,

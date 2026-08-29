@@ -329,11 +329,21 @@ private fun HeroCard(
                     )
                 }
                 countdown.remaining?.let {
-                    Spacer(Modifier.height(Spacing.xs))
+                    Spacer(Modifier.height(Spacing.md))
+                    // The clock time and the countdown were two bare numbers stacked, and nothing
+                    // said which was which. The countdown is labelled and monospaced so its digits
+                    // stop shifting the line every second.
+                    Text(
+                        "تبقّى",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
                     Text(
                         Formatting.countdown(it),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White.copy(alpha = 0.9f),
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = Color.White,
                     )
                 }
             }
@@ -371,7 +381,7 @@ private fun CurrentPrayerBand(
         )
         Text(
             Formatting.countdown(untilIqama),
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
             color = sky.accent,
         )
         countdown.iqamaAt?.let {
@@ -390,7 +400,7 @@ private fun CurrentPrayerBand(
             )
             Text(
                 Formatting.countdown(elapsed),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
                 color = Color.White.copy(alpha = 0.9f),
             )
         }
