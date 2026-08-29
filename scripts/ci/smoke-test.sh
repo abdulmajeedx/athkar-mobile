@@ -99,6 +99,10 @@ capture() {
 }
 
 echo "Capturing screens..."
+# A stray system dialog would be photographed instead of the app; back dismisses it, and bringing
+# the app forward again costs nothing when there was none.
+adb shell input keyevent KEYCODE_BACK || true
+adb shell am start -n "$APP_ID/$ACTIVITY" > /dev/null 2>&1 || true
 capture "01-adhkar"
 # The tab bar sits at the bottom; tapping by proportion of the display keeps this working whatever
 # resolution the emulator image happens to use.

@@ -104,6 +104,9 @@ private fun ChapterIndex(state: UiState, onIntent: (Intent) -> Unit) {
         // arriving in a different app.
         PatternedSurface(
             sky = SkyPhase.NIGHT,
+            // Stronger than the default: on a header this dark the geometry disappears entirely at
+            // ten percent, and an invisible pattern is just a dark rectangle.
+            patternAlpha = 0.16f,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(

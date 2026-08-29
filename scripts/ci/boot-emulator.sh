@@ -57,6 +57,9 @@ while [ "$SECONDS" -lt "$deadline" ]; do
     fi
     if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
         echo "Emulator ready after ${SECONDS}s."
+        # The emulator's own System UI stalls under load and throws a modal "isn't responding"
+        # dialog over everything, which swallows taps and photographs itself instead of the app.
+        adb shell settings put global hide_error_dialogs 1 || true
         adb shell settings put global window_animation_scale 0 || true
         adb shell settings put global transition_animation_scale 0 || true
         adb shell settings put global animator_duration_scale 0 || true
