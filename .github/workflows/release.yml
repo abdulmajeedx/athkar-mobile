@@ -183,12 +183,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$HAS_DIST_TOKEN" = "true" ] && [ -n "${DIST_REPO:-}" ]; then
+          if [ -n "${DIST_REPO:-}" ] && [ "$HAS_DIST_TOKEN" != "true" ]; then
+            # Falling back to this repository would put the build somewhere the project has
+            # deliberately decided it does not belong. Every gate above has already run, so the
+            # build is validated; only the delivery is skipped.
+            echo "::notice::DIST_REPO is set to $DIST_REPO but DIST_REPO_TOKEN is missing — build validated, publishing skipped"
+            exit 0
+          fi
+
+          if [ -n "${DIST_REPO:-}" ]; then
             TARGET="$DIST_REPO"
             echo "Publishing to the distribution repository: $TARGET"
           else
             TARGET="$GITHUB_REPOSITORY"
-            echo "::notice::DIST_REPO_TOKEN or DIST_REPO not configured — publishing to $TARGET"
+            echo "::notice::No DIST_REPO configured — publishing to $TARGET"
           fi
 
           NOTES=$(cat <<'EOF'
