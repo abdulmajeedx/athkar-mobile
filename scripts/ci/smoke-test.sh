@@ -104,10 +104,24 @@ capture "01-adhkar"
 # resolution the emulator image happens to use.
 read -r WIDTH HEIGHT <<< "$(adb shell wm size | sed 's/.*: //' | tr 'x' ' ')"
 if [ -n "${WIDTH:-}" ] && [ -n "${HEIGHT:-}" ]; then
-    TAB_Y=$(( HEIGHT * 96 / 100 ))
-    adb shell input tap $(( WIDTH * 50 / 100 )) "$TAB_Y"; capture "02-prayer"
-    adb shell input tap $(( WIDTH * 17 / 100 )) "$TAB_Y"; capture "03-qibla"
-    adb shell input tap $(( WIDTH * 83 / 100 )) "$TAB_Y"; capture "04-adhkar-again"
+    # The layout is right-to-left, so the tabs run adhkar, prayer, qibla from right to left.
+    TAB_Y=$(( HEIGHT * 95 / 100 ))
+    TAB_ADHKAR=$(( WIDTH * 83 / 100 ))
+    TAB_PRAYER=$(( WIDTH * 50 / 100 ))
+    TAB_QIBLA=$(( WIDTH * 17 / 100 ))
+
+    adb shell input tap "$TAB_PRAYER" "$TAB_Y"; capture "02-prayer"
+
+    # Give the prayer screen a place, so the screenshot shows the schedule rather than the empty
+    # "where are you" prompt. Best effort: the picker is driven by coordinates and may miss.
+    adb shell input tap $(( WIDTH / 2 )) $(( HEIGHT * 66 / 100 ))   # اختيار مدينة
+    sleep 2
+    adb shell input tap $(( WIDTH / 2 )) $(( HEIGHT * 40 / 100 ))   # first city in the list
+    sleep 3
+    capture "03-prayer-times"
+
+    adb shell input tap "$TAB_QIBLA" "$TAB_Y"; capture "04-qibla"
+    adb shell input tap "$TAB_ADHKAR" "$TAB_Y"; capture "05-adhkar"
 fi
 
 echo "Smoke test passed: $APP_ID launched and stayed in the foreground for ${OBSERVE_SECONDS}s (pid $PID)."

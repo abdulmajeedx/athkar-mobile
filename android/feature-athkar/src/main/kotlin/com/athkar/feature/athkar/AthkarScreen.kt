@@ -1,13 +1,16 @@
 package com.athkar.feature.athkar
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.core.domain.AdhkarReminder
+import com.athkar.designsystem.Elevation
 import com.athkar.designsystem.LocalAthkarAccents
 import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.SkyPhase
@@ -190,33 +194,55 @@ private fun ChapterRow(title: String, count: Int, highlighted: Boolean, onClick:
                 MaterialTheme.colorScheme.surface
             },
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = Elevation.raised),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(Spacing.lg),
+            modifier = Modifier.height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (highlighted) {
-                Icon(
-                    Icons.Default.Star,
-                    contentDescription = null,
-                    tint = accents.gold,
-                    modifier = Modifier.size(Sizing.iconSm),
+            // A rule down the leading edge: enough to give the row a spine and a colour without
+            // adding another box for the eye to parse.
+            Box(
+                Modifier
+                    .width(Sizing.hairline * 4)
+                    .fillMaxHeight()
+                    .background(if (highlighted) accents.gold else MaterialTheme.colorScheme.primary),
+            )
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (highlighted) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = null,
+                        tint = accents.gold,
+                        modifier = Modifier.size(Sizing.iconSm),
+                    )
+                    Spacer(Modifier.width(Spacing.sm))
+                }
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(Spacing.sm))
+                Surface(
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Text(
+                        count.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                    )
+                }
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                count.toString(),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
