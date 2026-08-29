@@ -48,9 +48,22 @@ adb logcat -d > "$LOGCAT_OUT" 2>/dev/null || true
 # Three independent signals, because each one alone has a blind spot: a crash on a background thread
 # never kills the process, a process can die without logging FATAL, and an ANR leaves it alive but
 # useless.
-if grep -q "FATAL EXCEPTION" "$LOGCAT_OUT"; then
-    echo "----- fatal exception -----"
-    grep -A 40 "FATAL EXCEPTION" "$LOGCAT_OUT" | head -60
+# Scoped to our process. An emulator image runs a dozen Google apps that crash happily on their
+# own — Gmail dies every boot for want of Play Services accounts — and an unscoped grep fails every
+# release on somebody else's stack trace. Each FATAL block names its process on the following line.
+CRASH_BLOCK=$(awk -v app="$APP_ID" '
+    /FATAL EXCEPTION/ { collecting = 1; block = $0 "\n"; owned = 0; next }
+    collecting {
+        block = block $0 "\n"
+        if ($0 ~ ("Process: " app ",")) { owned = 1 }
+        if ($0 !~ /AndroidRuntime/) { if (owned) { printf "%s", block } collecting = 0 }
+    }
+    END { if (collecting && owned) printf "%s", block }
+' "$LOGCAT_OUT")
+
+if [ -n "$CRASH_BLOCK" ]; then
+    echo "----- fatal exception in $APP_ID -----"
+    printf '%s\n' "$CRASH_BLOCK" | head -60
     fail "The app crashed on launch"
 fi
 
