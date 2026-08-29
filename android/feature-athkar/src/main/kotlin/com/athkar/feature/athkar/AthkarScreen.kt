@@ -145,12 +145,33 @@ private fun ChapterIndex(state: UiState, onIntent: (Intent) -> Unit) {
                     .padding(Spacing.xxl),
                 Alignment.Center,
             ) {
-                Text(
-                    "لا يوجد باب يطابق بحثك",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                // Two different failures wore the same message. "No chapter matches your search"
+                // was shown even when nothing had been searched and the database had never opened,
+                // which sent the reader hunting for a typo that was not there.
+                if (state.hasAnyContent) {
+                    Text(
+                        "لا يوجد باب يطابق بحثك",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "تعذّر تحميل الأذكار",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(Spacing.sm))
+                        Text(
+                            "لم تُفتح قاعدة البيانات على هذا الجهاز. أعد تشغيل التطبيق؛ فإن تكرّر، " +
+                                "احذفه وأعد تثبيته.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
             }
             return@Column
         }

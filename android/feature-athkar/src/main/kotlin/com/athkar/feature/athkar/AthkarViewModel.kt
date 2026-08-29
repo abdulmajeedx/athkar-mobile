@@ -45,6 +45,8 @@ class AthkarViewModel @Inject constructor(
         val query: String = "",
         val counters: Map<String, Int> = emptyMap(),
         val readingSize: ReadingSize = ReadingSize.MEDIUM,
+        /** False when the corpus itself is missing, as opposed to filtered away by a search. */
+        val hasAnyContent: Boolean = true,
         val isLoading: Boolean = true,
     )
 
@@ -103,6 +105,7 @@ class AthkarViewModel @Inject constructor(
             query = searchQuery,
             counters = counts,
             readingSize = size,
+            hasAnyContent = chapters.isNotEmpty(),
             isLoading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())

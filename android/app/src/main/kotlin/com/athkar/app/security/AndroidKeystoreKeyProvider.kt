@@ -44,9 +44,53 @@ class AndroidKeystoreKeyProvider @Inject constructor(
      * array it is handed once the database is open, so a cached instance would come back blank.
      */
     override fun provideKeyBytes(): ByteArray = synchronized(lock) {
-        val sealed = prefs.getString(PREF_SEALED_KEY, null)
-        if (sealed != null) return@synchronized unseal(Base64.decode(sealed, Base64.NO_WRAP))
+        existingPassphrase()?.let { return@synchronized it }
 
+        // Reaching here means either there was nothing stored, or what was stored can no longer be
+        // opened. Both are recoverable, and recovering is the only honest option: a device whose
+        // Keystore has stopped honouring the sealing key cannot be argued with, and an app that
+        // throws here shows the user an empty screen it blames on their search.
+        provisionFreshPassphrase()
+    }
+
+    /**
+     * The stored passphrase, or null when there is none or it cannot be recovered.
+     *
+     * Every failure is treated the same way. It is tempting to distinguish a missing key from a
+     * corrupt blob from a Keystore that refuses a key it issued itself, but the recovery is
+     * identical in all three cases and the distinctions are not reliably reportable across vendors.
+     */
+    private fun existingPassphrase(): ByteArray? {
+        val sealed = prefs.getString(PREF_SEALED_KEY, null) ?: return null
+        return try {
+            unseal(Base64.decode(sealed, Base64.NO_WRAP))
+        } catch (e: Exception) {
+            // Includes the case this whole class exists to survive: a hardware-backed key that is
+            // created successfully and then throws when it is used, which happens on some devices
+            // and on none of the emulators anything is tested against.
+            android.util.Log.w(TAG, "sealed database key is unusable; re-provisioning", e)
+            discardUnusableState()
+            null
+        }
+    }
+
+    /**
+     * Throws away everything derived from a key that no longer works, including the database.
+     *
+     * The database is encrypted with a passphrase that is now unrecoverable. Left in place,
+     * SQLCipher would fail to open it with the new one and the app would be broken permanently
+     * rather than briefly. The adhkar are bundled and re-seed; what is lost is the user's
+     * favourites, which is the whole cost of getting a working app back.
+     */
+    private fun discardUnusableState() {
+        runCatching { keystore.deleteEntry(ALIAS) }
+            .onFailure { android.util.Log.w(TAG, "could not delete the sealing key", it) }
+        prefs.edit().remove(PREF_SEALED_KEY).commit()
+        runCatching { context.deleteDatabase(DATABASE_NAME) }
+            .onFailure { android.util.Log.w(TAG, "could not delete the unopenable database", it) }
+    }
+
+    private fun provisionFreshPassphrase(): ByteArray {
         val passphrase = ByteArray(KEY_SIZE_BYTES).also { SecureRandom().nextBytes(it) }
         val blob = seal(passphrase)
         // commit(), not apply(): handing out a passphrase we failed to persist would leave the
@@ -54,7 +98,7 @@ class AndroidKeystoreKeyProvider @Inject constructor(
         check(
             prefs.edit().putString(PREF_SEALED_KEY, Base64.encodeToString(blob, Base64.NO_WRAP)).commit()
         ) { "Unable to persist the sealed database key" }
-        passphrase
+        return passphrase
     }
 
     private fun seal(passphrase: ByteArray): ByteArray {
@@ -89,36 +133,26 @@ class AndroidKeystoreKeyProvider @Inject constructor(
             )
 
     private fun createSealingKey(): SecretKey {
-        // StrongBox first, then the software-backed keystore. There is deliberately no
-        // setUnlockedDeviceRequired(true) here: the periodic sync worker opens the database while
-        // the device is locked, and such a key throws at that moment. The key stays hardware-bound
-        // and non-extractable either way, which is what protects an exfiltrated database file.
-        val attempts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) listOf(true, false) else listOf(false)
-        var lastError: Exception? = null
-        for (strongBox in attempts) {
-            try {
-                val spec = KeyGenParameterSpec.Builder(
-                    ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .apply { if (strongBox) setIsStrongBoxBacked(true) }
-                    .build()
-                val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-                generator.init(spec)
-                val key = generator.generateKey()
-                android.util.Log.i(TAG, "provisioned sealing key strongBox=$strongBox")
-                return key
-            } catch (e: Exception) {
-                // StrongBoxUnavailableException and friends are thrown at generation time; fall back
-                // to the software keystore so the app still opens on devices without StrongBox.
-                android.util.Log.w(TAG, "sealing key attempt strongBox=$strongBox failed", e)
-                lastError = e
-            }
-        }
-        throw IllegalStateException("Unable to provision AES keystore key", lastError)
+        // No StrongBox. It is a separate secure element with per-vendor quirks, and the failure it
+        // produces is the worst kind: the key is created without complaint and then throws when it
+        // is used, on a device no emulator resembles. The TEE-backed key this creates is still
+        // non-extractable, which is the property that protects an exfiltrated database file.
+        //
+        // There is deliberately no setUnlockedDeviceRequired either: the periodic sync worker opens
+        // the database while the device is locked, and such a key throws at that moment.
+        val spec = KeyGenParameterSpec.Builder(
+            ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+        )
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .build()
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+        generator.init(spec)
+        val key = generator.generateKey()
+        android.util.Log.i(TAG, "provisioned sealing key")
+        return key
     }
 
     fun wipeDbKey() {
@@ -185,6 +219,9 @@ class AndroidKeystoreKeyProvider @Inject constructor(
         const val AES_GCM = "AES/GCM/NoPadding"
         const val PREFS_NAME = "athkar_db_key"
         const val PREF_SEALED_KEY = "sealed_db_key_v1"
+
+        /** Must match AppDatabase.NAME; the recovery has to remove the file it can no longer open. */
+        const val DATABASE_NAME = "athkar.db"
         const val KEY_SIZE_BYTES = 32
         const val GCM_IV_BYTES = 12
         const val GCM_TAG_BITS = 128
