@@ -309,8 +309,18 @@ content update never destroys what the user marked.
 ## Releasing
 
 Releases are cut by tagging. [`release.yml`](.github/workflows/release.yml) runs the tests, builds a
-signed APK, refuses to continue if the APK carries a debug signature, and publishes a GitHub Release
-with the APK and its `sha256`.
+signed APK, launches it on an emulator, refuses to continue if it does not open or if it carries a
+debug signature, and publishes the result.
+
+**Builds go to a separate repository.** This one holds the code, the pipeline and the signing
+configuration and stays private; `abdulmajeedx/athkari-dist` holds nothing but releases. Keeping the
+two apart means the source repository is not a binary store, and the distribution repository can
+change visibility on its own — making downloads public later costs a settings toggle rather than
+publishing the source.
+
+Two settings drive it: the repository variable `DIST_REPO`, and a secret `DIST_REPO_TOKEN` holding a
+fine-grained token with `Contents: read and write` scoped to the distribution repository alone.
+Without them the workflow publishes here instead, with a notice, so a clone still works.
 
 ```bash
 git tag v1.0.1
