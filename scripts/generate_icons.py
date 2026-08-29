@@ -24,8 +24,11 @@ from PIL import Image, ImageDraw
 
 # --- palette (Theme.swift) ---------------------------------------------------------------------
 
-EMERALD_TOP = (11, 93, 74)
-EMERALD_BOTTOM = (8, 59, 49)
+# SkyPhase.NIGHT from the design system. The icon is the app's own night sky, so the thing on the
+# home screen and the thing that opens from it are the same object rather than two designs that
+# happen to share a motif.
+NIGHT_TOP = (16, 32, 58)
+NIGHT_BOTTOM = (7, 12, 26)
 GOLD = (229, 193, 88)
 GOLD_DEEP = (201, 162, 39)
 
@@ -73,14 +76,14 @@ def square_points(centre: float, radius: float, rotation_degrees: float) -> list
 # --- iOS -----------------------------------------------------------------------------------------
 
 def draw_ios(size: int) -> Image.Image:
-    image = Image.new("RGB", (size, size), EMERALD_TOP)
+    image = Image.new("RGB", (size, size), NIGHT_TOP)
     draw = ImageDraw.Draw(image)
 
     for y in range(size):
         t = y / max(size - 1, 1)
         draw.line(
             [(0, y), (size, y)],
-            fill=tuple(round(a + (b - a) * t) for a, b in zip(EMERALD_TOP, EMERALD_BOTTOM)),
+            fill=tuple(round(a + (b - a) * t) for a, b in zip(NIGHT_TOP, NIGHT_BOTTOM)),
         )
 
     centre = size / 2
@@ -195,8 +198,8 @@ def write_android() -> None:
                 android:type="linear"
                 android:startX="54" android:startY="0"
                 android:endX="54" android:endY="108"
-                android:startColor="{hex_colour(EMERALD_TOP)}"
-                android:endColor="{hex_colour(EMERALD_BOTTOM)}" />
+                android:startColor="{hex_colour(NIGHT_TOP)}"
+                android:endColor="{hex_colour(NIGHT_BOTTOM)}" />
         </aapt:attr>
     </path>
 </vector>

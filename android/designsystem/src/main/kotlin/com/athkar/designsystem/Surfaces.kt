@@ -4,7 +4,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +42,11 @@ fun PatternedSurface(
             // same size whatever the surface they cover.
             contentScale = ContentScale.Crop,
             colorFilter = ColorFilter.tint(sky.accent.copy(alpha = patternAlpha)),
-            modifier = Modifier.fillMaxSize(),
+            // matchParentSize, not fillMaxSize: fillMaxSize takes the largest height the parent
+            // offers and *participates in measuring it*, so the surface grew to the full screen and
+            // pushed everything below it out of view. matchParentSize takes the size the other
+            // children have already settled on.
+            modifier = Modifier.matchParentSize(),
         )
         content()
     }

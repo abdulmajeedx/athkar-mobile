@@ -91,4 +91,5 @@ jobs:
           path: |
             logcat.txt
             emulator.log
+            screenshots/
           if-no-files-found: ignore

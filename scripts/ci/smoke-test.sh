@@ -80,4 +80,34 @@ case "$RESUMED" in
     *) fail "The app is running but is not the foreground activity: ${RESUMED:-<none>}" ;;
 esac
 
+# Screenshots of each tab. The launch check proves the app opens; it cannot prove anything is
+# visible on the screen it opened — a header that grew to fill the display and pushed the content
+# out of view passed this test cleanly. These are uploaded for a human to look at.
+SHOTS_DIR=${SMOKE_SHOTS_DIR:-screenshots}
+mkdir -p "$SHOTS_DIR"
+
+capture() {
+    local name=$1
+    sleep 2
+    adb exec-out screencap -p > "$SHOTS_DIR/$name.png" 2>/dev/null || true
+    if [ -s "$SHOTS_DIR/$name.png" ]; then
+        echo "  captured $name"
+    else
+        echo "  could not capture $name"
+        rm -f "$SHOTS_DIR/$name.png"
+    fi
+}
+
+echo "Capturing screens..."
+capture "01-adhkar"
+# The tab bar sits at the bottom; tapping by proportion of the display keeps this working whatever
+# resolution the emulator image happens to use.
+read -r WIDTH HEIGHT <<< "$(adb shell wm size | sed 's/.*: //' | tr 'x' ' ')"
+if [ -n "${WIDTH:-}" ] && [ -n "${HEIGHT:-}" ]; then
+    TAB_Y=$(( HEIGHT * 96 / 100 ))
+    adb shell input tap $(( WIDTH * 50 / 100 )) "$TAB_Y"; capture "02-prayer"
+    adb shell input tap $(( WIDTH * 17 / 100 )) "$TAB_Y"; capture "03-qibla"
+    adb shell input tap $(( WIDTH * 83 / 100 )) "$TAB_Y"; capture "04-adhkar-again"
+fi
+
 echo "Smoke test passed: $APP_ID launched and stayed in the foreground for ${OBSERVE_SECONDS}s (pid $PID)."
