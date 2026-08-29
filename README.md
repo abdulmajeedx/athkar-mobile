@@ -330,6 +330,10 @@ fresh clone, fatal for a release, which is why the workflow checks the signature
 > every user would have to uninstall and lose their data. Back up `~/.athkar-signing/` somewhere
 > durable and offline.
 
+**Delivery to Telegram.** Optional. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as repository
+secrets and each published build is sent to that chat, so it can be installed from the phone without
+a cable or a browser download. Absent secrets skip the step rather than fail the release.
+
 **Update notifications.** Add the repository to
 [Obtainium](https://github.com/ImranR98/Obtainium) on the device — it watches the releases, notifies
 on each new tag, and installs with one tap.
