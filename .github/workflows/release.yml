@@ -1,4 +1,4 @@
-name: Release APK
+name: Release
 
 # Tagging is the release trigger: `git tag v1.0.1 && git push origin v1.0.1` publishes a signed
 # build. workflow_dispatch is here for re-running a release without moving the tag.
@@ -82,7 +82,10 @@ jobs:
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/athkar-release.jks"
 
-      - name: Build the signed release APK
+      # Two artifacts from one build: the .aab is what Google Play accepts for upload, the .apk
+      # is what a person installs directly from the distribution repository. Play will not take an
+      # APK for a new app, and an AAB cannot be sideloaded, so neither one replaces the other.
+      - name: Build the signed release APK and AAB
         working-directory: android
         env:
           ATHKAR_KEYSTORE_FILE: ${{ runner.temp }}/athkar-release.jks
@@ -90,7 +93,7 @@ jobs:
           ATHKAR_KEY_ALIAS: ${{ secrets.ATHKAR_KEY_ALIAS }}
           ATHKAR_KEY_PASSWORD: ${{ secrets.ATHKAR_KEY_PASSWORD }}
         run: |
-          ./gradlew :app:assembleRelease --console=plain \
+          ./gradlew :app:assembleRelease :app:bundleRelease --console=plain \
             -Pathkar.versionCode=${{ steps.version.outputs.code }} \
             -Pathkar.versionName=${{ steps.version.outputs.name }}
 
@@ -139,17 +142,32 @@ jobs:
       # The build falls back to the debug key when signing material is missing. That fallback is
       # useful locally and catastrophic in a release: a debug-signed APK can never update an
       # installed one. Fail here rather than let users discover it.
-      - name: Verify the signature
+      - name: Verify the signatures
         run: |
           set -euo pipefail
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/35.0.0/apksigner)
           APK=android/app/build/outputs/apk/release/app-release.apk
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+
           CERTS=$("$APKSIGNER" verify --print-certs "$APK")
           echo "$CERTS"
           if grep -q "CN=Android Debug" <<< "$CERTS"; then
             echo "::error::APK is signed with the debug key — the release signing secrets did not reach the build"
             exit 1
           fi
+
+          # apksigner only understands APKs; a bundle carries an ordinary JAR signature, so the
+          # same debug-key check has to be made with jarsigner or it would not be made at all.
+          BUNDLE_CERTS=$(jarsigner -verify -verbose:summary -certs "$AAB")
+          if grep -q "CN=Android Debug" <<< "$BUNDLE_CERTS"; then
+            echo "::error::AAB is signed with the debug key — Play would reject it and it could never be updated"
+            exit 1
+          fi
+          if ! grep -q "jar verified" <<< "$BUNDLE_CERTS"; then
+            echo "::error::AAB signature did not verify"
+            exit 1
+          fi
+          echo "AAB signature verified"
 
       - name: Name the artifact
         id: artifact
@@ -159,6 +177,11 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk "$DEST"
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           sha256sum "$DEST" | tee "$DEST.sha256"
+
+          BUNDLE="athkar-${{ steps.version.outputs.name }}.aab"
+          cp android/app/build/outputs/bundle/release/app-release.aab "$BUNDLE"
+          echo "bundle=$BUNDLE" >> "$GITHUB_OUTPUT"
+          sha256sum "$BUNDLE" | tee "$BUNDLE.sha256"
 
           # R8 renames everything, so a crash report from this build is unreadable without the
           # mapping that produced it. Publishing it alongside the APK is what makes `retrace`
@@ -180,6 +203,7 @@ jobs:
           TAG: v${{ steps.version.outputs.name }}
           VERSION: ${{ steps.version.outputs.name }}
           APK: ${{ steps.artifact.outputs.path }}
+          BUNDLE: ${{ steps.artifact.outputs.bundle }}
           MAPPING: ${{ steps.artifact.outputs.mapping }}
         run: |
           set -euo pipefail
@@ -206,11 +230,13 @@ jobs:
           نزّل ملف `.apk` أدناه وثبّته. المستودع خاص، فالتنزيل يحتاج جلسة GitHub —
           سجّل الدخول في متصفح الجوال أولًا.
 
-          `sha256` مرفق للتحقق من سلامة الملف.
+          ملف `.aab` ليس للتثبيت؛ هو النسخة التي تُرفع إلى Google Play.
+
+          `sha256` مرفق للتحقق من سلامة كل ملف.
           EOF
           )
 
-          ASSETS=("$APK" "$APK.sha256")
+          ASSETS=("$APK" "$APK.sha256" "$BUNDLE" "$BUNDLE.sha256")
           [ -n "${MAPPING:-}" ] && [ -f "$MAPPING" ] && ASSETS+=("$MAPPING")
 
           # A tag lives in this repository, not the distribution one, so the release there is

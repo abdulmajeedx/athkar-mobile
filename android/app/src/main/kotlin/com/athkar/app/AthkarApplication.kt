@@ -1,18 +1,11 @@
 package com.athkar.app
 
 import android.app.Application
-import androidx.hilt.work.HiltWorkerFactory
-import androidx.work.Configuration
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.athkar.app.notifications.PrayerAlarmScheduler
 import com.athkar.app.notifications.PrayerNotifier
 import com.athkar.data.seed.AdhkarSeeder
 import com.athkar.domain.PrayerPreferencesRepository
-import com.athkar.sync.worker.AthkarSyncWorker
 import dagger.hilt.android.HiltAndroidApp
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,14 +14,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
- * Application entry point (Hilt). Schedules the periodic, connectivity-aware sync worker AND the
- * pull-on-open refresh. Session auto-lock on background is enforced at the Activity level (see
- * MainActivity) because only it can hide the task snapshot.
+ * Application entry point (Hilt). Seeds the bundled adhkar on first launch and keeps the prayer
+ * alarms in step with the settings. There is no background networking: everything the app shows
+ * is either bundled or computed on the device.
  */
 @HiltAndroidApp
-class AthkarApplication : Application(), Configuration.Provider {
-
-    @Inject lateinit var workerFactory: HiltWorkerFactory
+class AthkarApplication : Application() {
 
     @Inject lateinit var adhkarSeeder: AdhkarSeeder
 
@@ -41,17 +32,11 @@ class AthkarApplication : Application(), Configuration.Provider {
     /** Application-lifetime scope for startup work that must not be tied to a screen. */
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .build()
-
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
         seedBundledAdhkar()
         watchPrayerAlarms()
-        schedulePeriodicSync()
     }
 
     /**
@@ -112,22 +97,5 @@ class AthkarApplication : Application(), Configuration.Provider {
     ) {
         previous?.uncaughtException(thread, throwable)
             ?: Runtime.getRuntime().halt(1)
-    }
-
-    private fun schedulePeriodicSync() {
-        val request = PeriodicWorkRequestBuilder<AthkarSyncWorker>(4, TimeUnit.HOURS)
-            .setConstraints(
-                androidx.work.Constraints.Builder()
-                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-                    .setRequiresBatteryNotLow(true)
-                    .build()
-            )
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            AthkarSyncWorker.NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            request,
-        )
     }
 }

@@ -113,7 +113,6 @@ android {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":data"))
-    implementation(project(":sync"))
     implementation(project(":feature-athkar"))
     implementation(project(":designsystem"))
     implementation(project(":feature-prayer-times"))
@@ -129,12 +128,10 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.core.ktx)
 
-    implementation(libs.androidx.biometric)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.datastore.preferences)
 
     implementation(libs.hilt.android)
-    implementation(libs.androidx.hilt.work)
     ksp(libs.hilt.compiler)
 
     implementation(libs.kotlinx.coroutines.android)

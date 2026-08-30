@@ -1,7 +1,6 @@
 package com.athkar.app.di
 
 import com.athkar.app.security.AndroidKeystoreKeyProvider
-import com.athkar.app.security.SessionManager
 import com.athkar.data.db.DbKeyProvider
 import dagger.Binds
 import dagger.Module

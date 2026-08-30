@@ -1,7 +1,6 @@
 package com.athkar.app
 
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,50 +28,35 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.athkar.app.security.SessionManager
 import com.athkar.designsystem.AthkarTheme
 import com.athkar.designsystem.Elevation
 import com.athkar.feature.athkar.AthkarRoute
 import com.athkar.feature.prayertimes.PrayerTimesRoute
 import com.athkar.feature.prayertimes.QiblaRoute
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 
 /**
- * Single-activity Compose host. Responsibilities per the delivery brief:
- *   - Hide the task snapshot while locked (FLAG_SECURE) and lock the session on backgrounding.
- *   - Route between the three top-level destinations: adhkar, prayer times and qibla.
+ * Single-activity Compose host: routes between the three top-level destinations — adhkar, prayer
+ * times and qibla.
+ *
+ * There is deliberately no FLAG_SECURE. It was here to hide the task snapshot of a locked session,
+ * but the lock screen was never built, so the flag was added on the first onPause and — with
+ * nothing able to unlock the session — never cleared again. The effect on a dhikr app was that
+ * screenshots stopped working the moment the user backgrounded it once, which is the opposite of
+ * what someone wanting to share a dhikr needs.
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    @Inject lateinit var sessionManager: SessionManager
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        if (sessionManager.isUnlocked()) {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
 
         setContent {
             AthkarTheme {
                 AthkarApp()
             }
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // Lock and hide task snapshot immediately when leaving foreground (delivery brief).
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        sessionManager.onBackground()
-    }
-
-    override fun onUserInteraction() {
-        super.onUserInteraction()
-        sessionManager.recordActivity()
     }
 }
 

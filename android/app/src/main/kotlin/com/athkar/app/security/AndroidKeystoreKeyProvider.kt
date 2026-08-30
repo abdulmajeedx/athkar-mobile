@@ -1,17 +1,13 @@
 package com.athkar.app.security
 
 import android.content.Context
-import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.athkar.data.db.DbKeyProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.SecureRandom
-import java.security.Signature
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -24,8 +20,8 @@ import javax.inject.Singleton
  *
  * Android Keystore keys are non-extractable by design — `SecretKey.getEncoded()` returns null for
  * them — so the passphrase cannot itself *be* a Keystore key. Instead it is a random 256-bit value
- * sealed (AES-GCM) with a Keystore key (StrongBox-backed when the device provides it) and persisted
- * only as ciphertext; the sealing key never leaves secure hardware.
+ * sealed (AES-GCM) with a TEE-backed Keystore key and persisted only as ciphertext; the sealing
+ * key never leaves secure hardware.
  *
  * STRIDE surface S1 (device theft): the database file and the sealed blob are both useless without
  * the hardware-bound sealing key, which cannot be exfiltrated from the device.
@@ -164,58 +160,10 @@ class AndroidKeystoreKeyProvider @Inject constructor(
         }
     }
 
-    /**
-     * Access the biometric-enrollment-bound signing key. Because it is created with
-     * `setInvalidatedByBiometricEnrollment(true)`, any enrollment change makes all operations throw
-     * [KeyPermanentlyInvalidatedException]; callers must re-enroll the user.
-     */
-    fun requireSigningKey(): Signature {
-        val entry = keystore.getEntry(SIGNING_ALIAS, null) as? KeyStore.PrivateKeyEntry
-            ?: throw KeyPermanentlyInvalidatedException("signing key missing; re-enroll")
-        val sig = Signature.getInstance("SHA256withECDSA")
-        sig.initSign(entry.privateKey)
-        return sig
-    }
-
-    /** Re-create the signing key if it was invalidated by a biometric enrollment change. */
-    fun recreateSigningKeyIfNeeded() {
-        try {
-            requireSigningKey()
-        } catch (e: KeyPermanentlyInvalidatedException) {
-            keystore.deleteEntry(SIGNING_ALIAS)
-            provisionSigningKey()
-        }
-    }
-
-    private fun provisionSigningKey() {
-        if (keystore.containsAlias(SIGNING_ALIAS)) return
-        val generator = KeyPairGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE
-        )
-        val builder = KeyGenParameterSpec.Builder(
-            SIGNING_ALIAS,
-            KeyProperties.PURPOSE_SIGN,
-        )
-            .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
-            .setDigests(KeyProperties.DIGEST_SHA256)
-            .setUserAuthenticationRequired(true) // the invalidation flag only applies to auth-bound keys
-            .setInvalidatedByBiometricEnrollment(true) // the delivery-brief requirement
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // API 30+: restrict to strong biometric only (equivalent to hidden setBiometricStrong)
-            builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-        } else {
-            // API 26-29: no strong-only switch; gate behind unlock (credential or any biometric)
-            builder.setUserAuthenticationValidityDurationSeconds(-1)
-        }
-        generator.initialize(builder.build())
-        generator.generateKeyPair()
-    }
-
     private companion object {
         const val TAG = "AthkarKeystore"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val ALIAS = "athkar_db_key_v1"
-        const val SIGNING_ALIAS = "athkar_signing_v1"
         const val AES_GCM = "AES/GCM/NoPadding"
         const val PREFS_NAME = "athkar_db_key"
         const val PREF_SEALED_KEY = "sealed_db_key_v1"

@@ -1,7 +1,8 @@
 # Athkar — أذكار
 
 **An offline-first dhikr & prayer-times app for Android and iOS**, built around a shared,
-platform-free Kotlin core that handles conflict-free multi-device sync.
+platform-free Kotlin core. The shipping app does no networking at all: it holds no INTERNET
+permission, and every prayer time, qibla bearing and solar position is computed on the device.
 
 <div dir="rtl">
 
@@ -27,10 +28,9 @@ platform-free Kotlin core that handles conflict-free multi-device sync.
 
 | Area | State |
 |------|-------|
-| `android/core` — HLC, CRDT, sync policy, prayer/qibla astronomy (pure Kotlin/JVM) | **Implemented + tested** (35 tests, 0 failures) |
-| `android/app` — Compose shell, Hilt DI, Keystore session | **Implemented** — builds a running debug APK |
+| `android/core` — HLC, CRDT, sync policy, prayer/qibla astronomy (pure Kotlin/JVM) | **Implemented + tested** (43 tests, 0 failures) |
+| `android/app` — Compose shell, Hilt DI, Keystore-sealed database key | **Implemented** — builds a running signed release APK and AAB |
 | `android/data` — Room + SQLCipher, DAOs, repositories | **Implemented** (13 files) |
-| `android/sync` — Ktor client, DTOs, WorkManager worker | **Implemented** (5 files) |
 | `android/domain` — repository ports, merge use case | **Implemented** (2 files) |
 | `android/designsystem` — theme, type scale, tokens | **Implemented** (2 files) |
 | `android/feature-athkar` — chapter index, readings, tally, favourites | **Implemented** (2 files) |
@@ -41,14 +41,20 @@ platform-free Kotlin core that handles conflict-free multi-device sync.
 | `ios/Athkar/*` | **Implemented + tested** — SwiftUI app, 13 tests, 0 failures on a macOS runner |
 | `backend/` | Scaffolded — contract-first, implementation pending |
 
-The Android app **assembles and runs**: `assembleDebug` produces a ~35 MB debug APK
-(`com.athkar.app.debug`, v1.0.0/1000, minSdk 26, targetSdk 35) with three tabs — adhkar, prayer
-times and qibla. It ships the full text of *Hisn al-Muslim* — 132 chapters, 267 readings — alerts at
-each prayer time, and works with no network at all. iOS and the backend remain specification-only, so device-to-device sync does not function.
+The Android app **assembles and runs**: `bundleRelease` produces a signed 9.4 MB AAB for Google
+Play and `assembleRelease` a 15 MB APK for direct install (`com.athkar.app`, minSdk 26,
+targetSdk 35), with three tabs — adhkar, prayer times and qibla. It ships the full text of
+*Hisn al-Muslim* — 133 chapters, 287 readings — alerts at each prayer time, and works with no
+network at all. iOS and the backend remain specification-only.
 
-**Test coverage is currently uneven and worth knowing about:** all 35 tests live in `core`. The
-`app`, `data`, `sync`, `domain`, and `feature-*` modules have `src/test` and `src/androidTest`
-directories wired into the build but **no test files yet**.
+**There is no device-to-device sync.** The `sync` module — a Ktor client pointed at a placeholder
+host — was removed in v1.1.0 along with the `INTERNET` permission, because an unreachable server
+does not justify asking a user for network access. The CRDT and outbox policy it would have used
+still lives in `core` and is still tested; what is gone is the client that had nowhere to call.
+
+**Test coverage is uneven and worth knowing about:** all 43 tests live in `core`. The `app`,
+`data`, `domain`, and `feature-*` modules have `src/test` and `src/androidTest` directories wired
+into the build but **no test files yet**.
 
 ---
 
@@ -73,8 +79,6 @@ athkar/
 │   ├── data/                    Room + SQLCipher persistence
 │   │       db/{AppDatabase,AthkarDbFactory}.kt, db/dao/{Adhkar,Sync,Notification}Dao.kt,
 │   │       db/entity/*, repository/*Impl.kt, di/{Database,Repository}Module.kt
-│   ├── sync/                    Ktor client + WorkManager background sync
-│   │       network/{SyncApi,NetworkModule}.kt, dto/SyncDtos.kt, worker/AthkarSyncWorker.kt
 │   ├── feature-athkar/          adhkar UI — AthkarScreen.kt, AthkarViewModel.kt
 │   ├── feature-prayer-times/    prayer schedule, qibla compass, location + method pickers
 │   ├── build.gradle.kts         root build + enforcePureDomainLayers check
@@ -119,9 +123,11 @@ Every number above is tied to a named measurement tool in the ADR document — n
 
 ---
 
-## The sync engine
+## The sync engine — specification only
 
-The correctness-critical piece, living in `android/core` as pure, unit-testable policy:
+Nothing below is reachable from the shipping app; the client that would have driven it was deleted
+in v1.1.0. It is kept because the policy is implemented and tested in `android/core`, and because a
+future server would be built against it. Read it as a design, not as a feature.
 
 **Outbox with idempotency keys.** Every local write is enqueued with a **UUID v7** idempotency key.
 The server returns the same result for any replay, so retries are safe by construction.
@@ -259,9 +265,9 @@ no tests yet — see Known gaps.
 | UI | Jetpack Compose (BOM 2024.12.01), Material 3, Navigation Compose |
 | DI | Hilt 2.57.1 (KSP) |
 | Persistence | Room 2.7.0 over **SQLCipher** (AES-256), WAL journal mode |
-| Networking | Ktor 3.0.1 client (OkHttp engine, auth, content negotiation, kotlinx-serialization) |
-| Background work | WorkManager 2.10.0 — `AthkarSyncWorker` |
-| Security | Android Keystore / StrongBox key provisioning, `androidx.biometric`, `security-crypto` |
+| Networking | None — the app declares no `INTERNET` permission |
+| Background work | `AlarmManager` exact alarms for the prayer alerts; no WorkManager |
+| Security | Android Keystore (TEE) sealing key over an AES-GCM database passphrase |
 | Observability | OpenTelemetry 1.44.1 (API, SDK, OTLP exporter) |
 | Test tooling | JUnit 5, Robolectric, MockK, Turbine, Espresso |
 
