@@ -7,6 +7,7 @@ import java.time.ZoneId
 import java.time.chrono.HijrahChronology
 import java.time.chrono.HijrahDate
 import java.time.temporal.ChronoField
+import java.util.Locale
 
 /**
  * Arabic date and time formatting done explicitly rather than through the platform locale, so the
@@ -37,7 +38,7 @@ object Formatting {
             else -> hour24 % 12
         }
         val suffix = if (hour24 < 12) "ص" else "م"
-        return "%d:%02d %s".format(hour12, local.minute, suffix)
+        return "%d:%02d %s".format(Locale.ROOT, hour12, local.minute, suffix)
     }
 
     /** A countdown as `h:mm:ss`, or `mm:ss` under an hour. */
@@ -47,9 +48,9 @@ object Formatting {
         val minutes = (total % 3600) / 60
         val seconds = total % 60
         return if (hours > 0) {
-            "%d:%02d:%02d".format(hours, minutes, seconds)
+            "%d:%02d:%02d".format(Locale.ROOT, hours, minutes, seconds)
         } else {
-            "%02d:%02d".format(minutes, seconds)
+            "%02d:%02d".format(Locale.ROOT, minutes, seconds)
         }
     }
 
@@ -89,8 +90,8 @@ object Formatting {
         "${date.dayOfMonth} ${gregorianMonths[date.monthValue - 1]} ${date.year} م"
 
     /** Distance in whole kilometres, with a thousands separator. */
-    fun distanceKm(km: Double): String = "%,d كم".format(km.toLong())
+    fun distanceKm(km: Double): String = "%,d كم".format(Locale.ROOT, km.toLong())
 
     /** A compass bearing to one decimal place. */
-    fun bearing(degrees: Double): String = "%.1f°".format(degrees)
+    fun bearing(degrees: Double): String = "%.1f°".format(Locale.ROOT, degrees)
 }

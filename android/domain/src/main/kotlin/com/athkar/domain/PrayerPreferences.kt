@@ -6,6 +6,7 @@ import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * A place the user computes times for, and how it was obtained.
@@ -142,6 +143,15 @@ interface DeviceLocationSource {
  * Implemented in `:app`, which owns the recording and the playback service.
  */
 interface AlertSoundPreview {
+    /**
+     * True while an audition is actually sounding.
+     *
+     * Reported rather than assumed: the audition can end without being stopped — the recording
+     * finishes, a call takes the audio away, Do Not Disturb silences it — and a button that tracked
+     * only its own taps would sit there offering to stop something that stopped by itself.
+     */
+    val isPlaying: StateFlow<Boolean>
+
     /** Plays [sound], replacing anything already playing. [AlertSound.SILENT] plays nothing. */
     fun play(sound: AlertSound)
 

@@ -11,6 +11,7 @@ import com.athkar.domain.PrayerPreferencesRepository
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -144,7 +145,9 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         val local = at.atZone(ZoneId.systemDefault())
         val hour12 = if (local.hour % 12 == 0) 12 else local.hour % 12
         val suffix = if (local.hour < 12) "ص" else "م"
-        return "%d:%02d %s".format(hour12, local.minute, suffix)
+        // Locale.ROOT, or Java localises the digits: on an ar device the notification would read
+        // ٥:٠٧ while every date the app renders beside it stays in Latin figures.
+        return "%d:%02d %s".format(Locale.ROOT, hour12, local.minute, suffix)
     }
 
     companion object {

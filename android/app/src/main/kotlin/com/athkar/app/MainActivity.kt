@@ -1,15 +1,17 @@
 package com.athkar.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -19,15 +21,19 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.util.Consumer
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navDeepLink
 import com.athkar.designsystem.AthkarTheme
 import com.athkar.designsystem.Elevation
 import com.athkar.feature.athkar.AthkarRoute
@@ -60,15 +66,27 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The three tabs are peers, not a stack: none of them is "inside" another. */
+/**
+ * The three tabs are peers, not a stack: none of them is "inside" another.
+ *
+ * Each is addressable by a private `athkar://` URI so something outside the UI — a prayer alert, at
+ * four in the morning, on a cold process — can open the tab it is talking about instead of dropping
+ * the user on whichever tab happens to start.
+ */
 private enum class Destination(
     val route: String,
     val label: String,
     val icon: ImageVector,
+    /**
+     * The host is spelled out rather than derived from [route] because the adhkar tab's is already
+     * public: `athkar://adhkar` is the browsable filter the manifest has always advertised, and it
+     * matched no destination until now.
+     */
+    val deepLink: String,
 ) {
-    ATHKAR("athkar", "الأذكار", Icons.Default.List),
-    PRAYER("prayer", "الصلاة", Icons.Default.DateRange),
-    QIBLA("qibla", "القبلة", Icons.Default.Place),
+    ATHKAR("athkar", "الأذكار", Icons.AutoMirrored.Filled.MenuBook, "athkar://adhkar"),
+    PRAYER("prayer", "الصلاة", Icons.Default.Schedule, "athkar://prayer"),
+    QIBLA("qibla", "القبلة", Icons.Default.Explore, "athkar://qibla"),
 }
 
 @Composable
@@ -76,6 +94,26 @@ private fun AthkarApp() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+    val activity = LocalContext.current as? ComponentActivity
+
+    // launchMode is singleTask, so a second alert while the app is already open arrives here rather
+    // than through onCreate; without this the notification would silently do nothing.
+    DisposableEffect(activity, navController) {
+        val listener = Consumer<Intent> { navController.handleDeepLink(it) }
+        activity?.addOnNewIntentListener(listener)
+        onDispose { activity?.removeOnNewIntentListener(listener) }
+    }
+
+    // Back from a peer tab returns to the first one rather than closing the app. The start
+    // destination is meant to be the last screen standing between the user and the launcher.
+    val atStart = currentDestination?.hierarchy?.any { it.route == Destination.ATHKAR.route } == true
+    BackHandler(enabled = !atStart) {
+        navController.navigate(Destination.ATHKAR.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -124,9 +162,18 @@ private fun AthkarApp() {
             startDestination = Destination.ATHKAR.route,
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable(Destination.ATHKAR.route) { AthkarRoute() }
-            composable(Destination.PRAYER.route) { PrayerTimesRoute() }
-            composable(Destination.QIBLA.route) { QiblaRoute() }
+            Destination.entries.forEach { destination ->
+                composable(
+                    route = destination.route,
+                    deepLinks = listOf(navDeepLink { uriPattern = destination.deepLink }),
+                ) {
+                    when (destination) {
+                        Destination.ATHKAR -> AthkarRoute()
+                        Destination.PRAYER -> PrayerTimesRoute()
+                        Destination.QIBLA -> QiblaRoute()
+                    }
+                }
+            }
         }
     }
 }

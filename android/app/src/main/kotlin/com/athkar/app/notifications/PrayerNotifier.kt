@@ -150,10 +150,13 @@ class PrayerNotifier @Inject constructor(
         playing: Boolean,
         preview: Boolean = false,
     ): Notification {
+        // Addressed at the prayer tab, not just at the app. Tapping "حان الآن وقت صلاة الفجر" used
+        // to open the 133-chapter adhkar index, leaving the user to go and find the time they had
+        // just been told about.
         val contentIntent = PendingIntent.getActivity(
             context,
             prayer.ordinal,
-            Intent(context, MainActivity::class.java)
+            Intent(Intent.ACTION_VIEW, PRAYER_TAB_URI, context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -259,6 +262,7 @@ class PrayerNotifier @Inject constructor(
         const val CHANNEL_DEVICE_ALARM = "prayer_times_device_alarm_v1"
         const val CHANNEL_ADHAN = "prayer_times_adhan_v1"
         const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
+        val PRAYER_TAB_URI: Uri = Uri.parse("athkar://prayer")
         const val NOTIFICATION_ID_BASE = 4100
         const val PREVIEW_NOTIFICATION_ID = 4150
         const val STOP_REQUEST_CODE = 4200
