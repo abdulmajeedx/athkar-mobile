@@ -7,6 +7,8 @@ import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.PolarDayException
 import com.athkar.core.prayer.Prayer
 import com.athkar.core.prayer.PrayerTimes
+import com.athkar.domain.AlertSound
+import com.athkar.domain.AlertSoundPreview
 import com.athkar.domain.DeviceLocationSource
 import com.athkar.domain.Place
 import com.athkar.domain.PrayerPreferences
@@ -40,6 +42,7 @@ import kotlinx.coroutines.launch
 class PrayerTimesViewModel @Inject constructor(
     private val preferencesRepository: PrayerPreferencesRepository,
     private val locationSource: DeviceLocationSource,
+    private val alertSoundPreview: AlertSoundPreview,
 ) : ViewModel() {
 
     /** One row of the schedule. */
@@ -60,6 +63,7 @@ class PrayerTimesViewModel @Inject constructor(
         val needsPlace: Boolean = false,
         val notificationsEnabled: Boolean = false,
         val notifiedPrayers: Set<Prayer> = emptySet(),
+        val alertSound: AlertSound = AlertSound.DEFAULT,
         val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
         val error: String? = null,
     )
@@ -120,6 +124,7 @@ class PrayerTimesViewModel @Inject constructor(
                 needsPlace = true,
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
+                alertSound = preferences.alertSound,
                 hijriDate = Formatting.hijriDate(date),
                 gregorianDate = Formatting.gregorianDate(date),
             )
@@ -140,6 +145,7 @@ class PrayerTimesViewModel @Inject constructor(
                 gregorianDate = Formatting.gregorianDate(date),
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
+                alertSound = preferences.alertSound,
                 iqamaMinutes = preferences.iqamaMinutes,
             )
         } catch (e: PolarDayException) {
@@ -152,6 +158,7 @@ class PrayerTimesViewModel @Inject constructor(
                 gregorianDate = Formatting.gregorianDate(date),
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
+                alertSound = preferences.alertSound,
                 error = "الشمس لا تشرق ولا تغرب في هذا الموقع اليوم، فلا يمكن حساب المواقيت. " +
                     "اختر أقرب مدينة تحتها بخط عرض أدنى.",
             )
@@ -223,6 +230,26 @@ class PrayerTimesViewModel @Inject constructor(
 
     fun setNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.setNotificationsEnabled(enabled) }
+    }
+
+    fun selectAlertSound(sound: AlertSound) {
+        viewModelScope.launch { preferencesRepository.setAlertSound(sound) }
+    }
+
+    /** Plays the chosen sound so the user hears it now rather than at dawn. */
+    fun previewAlertSound(sound: AlertSound) = alertSoundPreview.play(sound)
+
+    fun stopAlertSoundPreview() = alertSoundPreview.stop()
+
+    /**
+     * Leaving the screen stops the audition.
+     *
+     * Two and a half minutes of adhan continuing after the user has walked away from the settings
+     * they were adjusting is the app talking over them.
+     */
+    override fun onCleared() {
+        alertSoundPreview.stop()
+        super.onCleared()
     }
 
     /** Adds or removes one prayer from the alerting set, leaving the master switch untouched. */

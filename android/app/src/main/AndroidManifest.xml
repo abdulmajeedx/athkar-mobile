@@ -25,6 +25,15 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- The adhan runs for two and a half minutes, which is far longer than a broadcast receiver
+         lives. It is played by a foreground service instead, and these three permissions are what
+         that costs. All are install-time and none reach the network. WAKE_LOCK is required by
+         MediaPlayer.setWakeMode, and is what keeps the audio going with the screen off; every lock
+         this app takes is acquired with a timeout so a bug cannot drain a battery. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:name=".AthkarApplication"
         android:allowBackup="true"
@@ -63,6 +72,17 @@
             android:name=".notifications.PrayerAlarmReceiver"
             android:exported="false" />
 
+        <!-- Plays the adhan. Typed mediaPlayback because that is precisely what it does — it
+             decodes one audio file to the speaker under a MediaSession, and nothing else. The type
+             carries no platform timeout, unlike shortService, whose three-minute cliff sits barely
+             twenty seconds past the end of the recording. It must never be started from
+             BOOT_COMPLETED: apps targeting Android 15 may not launch a mediaPlayback service from
+             a boot broadcast, and SystemEventReceiver only re-registers alarms for that reason. -->
+        <service
+            android:name=".notifications.AdhanPlayerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <!-- Re-registers alarms after the events that wipe them. -->
         <receiver
             android:name=".notifications.SystemEventReceiver"
@@ -72,6 +92,10 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
+                <!-- Android 12+. Revoking the exact-alarm permission deletes every exact alarm the
+                     app has registered, silently and without reopening it. This is the only
+                     notice given, and without it the alerts simply stop. -->
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

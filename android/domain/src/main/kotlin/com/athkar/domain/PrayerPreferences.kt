@@ -22,6 +22,45 @@ data class Place(
 )
 
 /**
+ * What the alert sounds like when a prayer time arrives.
+ *
+ * @property label the Arabic name shown in settings.
+ * @property description the one-line explanation shown under it.
+ */
+enum class AlertSound(val label: String, val description: String) {
+    /** The call itself, played in full. */
+    ADHAN("الأذان", "الأذان كاملًا، ويمكن إيقافه من الإشعار"),
+
+    /** Whatever tone the device uses for its own alarms — short, and already familiar. */
+    DEVICE_ALARM("نغمة المنبّه", "نغمة المنبّه المضبوطة في جهازك"),
+
+    /** Notification and vibration only. */
+    SILENT("صامت", "إشعار واهتزاز بلا صوت"),
+    ;
+
+    /**
+     * The sound to actually use for [prayer].
+     *
+     * Sunrise is not prayed and is never called to, so it never gets the adhan however the setting
+     * reads — the muezzin does not call at sunrise, and an app that does would be teaching the user
+     * something false about their own religion. It still alerts, because the user asked it to; it
+     * just uses the ordinary tone.
+     */
+    fun forPrayer(prayer: Prayer): AlertSound =
+        if (this == ADHAN && prayer == Prayer.SUNRISE) DEVICE_ALARM else this
+
+    companion object {
+        val DEFAULT: AlertSound = ADHAN
+
+        /**
+         * A name written by another version of the app must not crash this one; an unrecognised
+         * value falls back to the default exactly as an absent one does.
+         */
+        fun fromName(name: String?): AlertSound = entries.firstOrNull { it.name == name } ?: DEFAULT
+    }
+}
+
+/**
  * Everything that changes a computed prayer time, plus the place it is computed for and which of
  * those times should raise an alert.
  *
@@ -29,6 +68,8 @@ data class Place(
  *   at dawn without being asked is one the user uninstalls.
  * @property notifiedPrayers which times alert when [notificationsEnabled]. Sunrise is excluded by
  *   default — it ends Fajr rather than beginning a prayer.
+ * @property alertSound what that alert sounds like. Only consulted when [notificationsEnabled]; the
+ *   master switch is the one that decides whether the app makes a sound unasked.
  */
 data class PrayerPreferences(
     val method: CalculationMethod = CalculationMethod.UMM_AL_QURA,
@@ -37,6 +78,7 @@ data class PrayerPreferences(
     val place: Place? = null,
     val notificationsEnabled: Boolean = false,
     val notifiedPrayers: Set<Prayer> = DEFAULT_NOTIFIED_PRAYERS,
+    val alertSound: AlertSound = AlertSound.DEFAULT,
     val iqamaMinutes: Map<Prayer, Int> = DEFAULT_IQAMA_MINUTES,
 ) {
     /** Minutes between the adhan and the iqama for [prayer]; zero when the prayer has none. */
@@ -82,10 +124,27 @@ interface PrayerPreferencesRepository {
     suspend fun setPlace(place: Place)
     suspend fun setNotificationsEnabled(enabled: Boolean)
     suspend fun setNotifiedPrayers(prayers: Set<Prayer>)
+    suspend fun setAlertSound(sound: AlertSound)
     suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int)
 }
 
 /** Port for a one-shot device location fix. Returns null when unavailable or not permitted. */
 interface DeviceLocationSource {
     suspend fun currentPlace(): Place?
+}
+
+/**
+ * Port for auditioning an alert sound from the settings screen.
+ *
+ * A sound chosen from a list is a sound the user first hears at four in the morning. Being able to
+ * play it on the spot is what turns the choice into an informed one.
+ *
+ * Implemented in `:app`, which owns the recording and the playback service.
+ */
+interface AlertSoundPreview {
+    /** Plays [sound], replacing anything already playing. [AlertSound.SILENT] plays nothing. */
+    fun play(sound: AlertSound)
+
+    /** Stops what [play] started. Safe to call when nothing is playing. */
+    fun stop()
 }

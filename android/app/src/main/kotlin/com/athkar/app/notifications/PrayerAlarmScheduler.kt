@@ -8,6 +8,7 @@ import android.os.Build
 import com.athkar.core.prayer.PolarDayException
 import com.athkar.core.prayer.Prayer
 import com.athkar.core.prayer.PrayerTimes
+import com.athkar.domain.AlertSound
 import com.athkar.domain.PrayerPreferences
 import com.athkar.domain.PrayerPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -66,7 +67,17 @@ class PrayerAlarmScheduler @Inject constructor(
             for (prayer in preferences.notifiedPrayers) {
                 val at = times.timeFor(prayer)
                 if (!at.isAfter(now)) continue
-                schedule(manager, prayer, at, dayOffset)
+                schedule(
+                    manager = manager,
+                    prayer = prayer,
+                    at = at,
+                    dayOffset = dayOffset,
+                    // Written into the alarm so the receiver can act on it without waiting on a
+                    // disk read it has no time for. Every settings change reschedules, so what an
+                    // alarm carries is never older than the last change the user made.
+                    sound = preferences.alertSound.forPrayer(prayer),
+                    placeName = place.name,
+                )
             }
         }
     }
@@ -75,20 +86,37 @@ class PrayerAlarmScheduler @Inject constructor(
         alarmManager?.let { cancelAll(it) }
     }
 
-    private fun schedule(manager: AlarmManager, prayer: Prayer, at: Instant, dayOffset: Int) {
-        val pendingIntent = pendingIntent(prayer, dayOffset, at) ?: return
+    /**
+     * Registers one alarm, recording in it whether it was registered exactly.
+     *
+     * That flag is not a diagnostic — the receiver cannot play the adhan without it. Android grants
+     * a brief foreground-service allowance to the delivery of an *exact* alarm and none at all to
+     * an inexact one, and the permission can be revoked between scheduling and firing, so asking
+     * the alarm manager at delivery time can give a different answer than the one the system
+     * actually attached to this broadcast. The alarm has to carry its own provenance.
+     */
+    private fun schedule(
+        manager: AlarmManager,
+        prayer: Prayer,
+        at: Instant,
+        dayOffset: Int,
+        sound: AlertSound,
+        placeName: String,
+    ) {
         val triggerAt = at.toEpochMilli()
         // setExactAndAllowWhileIdle is the only variant that fires on time in Doze; without the
         // exact-alarm permission the inexact fallback still fires, just late.
         if (canScheduleExactAlarms()) {
-            runCatching {
-                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-            }.onFailure {
-                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-            }
-        } else {
-            manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            val exactIntent = pendingIntent(prayer, dayOffset, at, true, sound, placeName)
+            val scheduled = exactIntent != null && runCatching {
+                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, exactIntent)
+            }.isSuccess
+            if (scheduled) return
         }
+        // Re-created rather than reused: the flag the receiver reads must describe the call that
+        // actually registered the alarm, not the one that was attempted first.
+        val inexactIntent = pendingIntent(prayer, dayOffset, at, false, sound, placeName) ?: return
+        manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, inexactIntent)
     }
 
     private fun cancelAll(manager: AlarmManager) {
@@ -98,7 +126,9 @@ class PrayerAlarmScheduler @Inject constructor(
                 val existing = PendingIntent.getBroadcast(
                     context,
                     requestCode(prayer, dayOffset),
-                    alarmIntent(prayer, dayOffset, Instant.EPOCH),
+                    // Only the component, action and request code decide what this matches; the
+                    // extras are ignored, so placeholders here cancel the real alarm.
+                    alarmIntent(prayer, dayOffset, Instant.EPOCH, false, AlertSound.SILENT, null),
                     PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
                 )
                 if (existing != null) {
@@ -109,19 +139,38 @@ class PrayerAlarmScheduler @Inject constructor(
         }
     }
 
-    private fun pendingIntent(prayer: Prayer, dayOffset: Int, at: Instant): PendingIntent? =
+    private fun pendingIntent(
+        prayer: Prayer,
+        dayOffset: Int,
+        at: Instant,
+        wasExact: Boolean,
+        sound: AlertSound,
+        placeName: String?,
+    ): PendingIntent? =
         PendingIntent.getBroadcast(
             context,
             requestCode(prayer, dayOffset),
-            alarmIntent(prayer, dayOffset, at),
+            alarmIntent(prayer, dayOffset, at, wasExact, sound, placeName),
+            // Extras are what change between the two calls, and only UPDATE_CURRENT rewrites them:
+            // intents that differ solely by extras are the same intent as far as matching goes.
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun alarmIntent(prayer: Prayer, dayOffset: Int, at: Instant): Intent =
+    private fun alarmIntent(
+        prayer: Prayer,
+        dayOffset: Int,
+        at: Instant,
+        wasExact: Boolean,
+        sound: AlertSound,
+        placeName: String?,
+    ): Intent =
         Intent(context, PrayerAlarmReceiver::class.java).apply {
             action = "$ACTION_PRAYER_ALARM.${prayer.name}.$dayOffset"
             putExtra(PrayerAlarmReceiver.EXTRA_PRAYER, prayer.name)
             putExtra(PrayerAlarmReceiver.EXTRA_AT_MILLIS, at.toEpochMilli())
+            putExtra(PrayerAlarmReceiver.EXTRA_WAS_EXACT, wasExact)
+            putExtra(PrayerAlarmReceiver.EXTRA_ALERT_SOUND, sound.name)
+            putExtra(PrayerAlarmReceiver.EXTRA_PLACE_NAME, placeName)
         }
 
     /** Unique per prayer *and* per day, so tomorrow's Fajr does not overwrite today's. */

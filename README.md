@@ -35,7 +35,7 @@ permission, and every prayer time, qibla bearing and solar position is computed 
 | `android/designsystem` — theme, type scale, tokens | **Implemented** (2 files) |
 | `android/feature-athkar` — chapter index, readings, tally, favourites | **Implemented** (2 files) |
 | `android/feature-prayer-times` — prayer schedule + qibla compass | **Implemented** (6 files) |
-| `android/app` — prayer-time alarms, notification channel, boot/time-change receivers | **Implemented** (3 files) |
+| `android/app` — prayer-time alarms, adhan playback service, notification channels, boot/time-change receivers | **Implemented** (6 files) |
 | `contracts/openapi` — API contract | **Complete** (10 endpoints) |
 | `docs/` — architecture, DB, security, operations | **Complete** (~3,300 lines) |
 | `ios/Athkar/*` | **Implemented + tested** — SwiftUI app, 13 tests, 0 failures on a macOS runner |
@@ -44,8 +44,8 @@ permission, and every prayer time, qibla bearing and solar position is computed 
 The Android app **assembles and runs**: `bundleRelease` produces a signed 9.4 MB AAB for Google
 Play and `assembleRelease` a 15 MB APK for direct install (`com.athkar.app`, minSdk 26,
 targetSdk 35), with three tabs — adhkar, prayer times and qibla. It ships the full text of
-*Hisn al-Muslim* — 133 chapters, 287 readings — alerts at each prayer time, and works with no
-network at all. iOS and the backend remain specification-only.
+*Hisn al-Muslim* — 133 chapters, 287 readings — calls the adhan at each prayer time, and works with
+no network at all. iOS and the backend remain specification-only.
 
 **There is no device-to-device sync.** The `sync` module — a Ktor client pointed at a placeholder
 host — was removed in v1.1.0 along with the `INTERNET` permission, because an unreachable server
@@ -309,6 +309,72 @@ fetched from the book's official API and shipped inside the APK:
 `AdhkarSeeder` installs it on first launch and replaces it whenever the file's `version` field is
 raised by an app update. Only rows it wrote are replaced, and favourites are carried across, so a
 content update never destroys what the user marked.
+
+---
+
+## The adhan
+
+When a prayer time arrives the app can call it. The alert sound is a setting with three values —
+**الأذان**, **نغمة المنبّه**, **صامت** — auditionable from the settings screen, because a sound
+chosen from a list is otherwise first heard at four in the morning.
+
+Sunrise never gets the adhan whatever the setting says. It is not prayed and is not called to; an
+app that called it would be teaching the user something false. It still alerts, with the ordinary
+tone.
+
+### The recording
+
+| | |
+|---|---|
+| Source | [`File:Beautiful adhan.ogg`](https://commons.wikimedia.org/wiki/File:Beautiful_adhan.ogg) on Wikimedia Commons |
+| Author | Adam-synagda, uploaded 2022-04-29 |
+| Licence | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — public-domain dedication, no attribution required |
+| Retrieved | 2026-09-05 |
+| Bundled at | `android/app/src/main/res/raw/adhan.ogg` (1,229,032 bytes, Ogg Vorbis, 2:34) |
+| SHA-256 | `35fe06b08fe80505c550c33fed8a783fa9901ddc81ac884958b4be048f5b2a79` |
+
+> **Not yet cleared for release.** The recording was chosen on licence, length, loudness and
+> structure, and its structure is that of a complete adhan — but nobody has listened to it. Before
+> the first release that ships it, a fluent listener has to confirm the wording and that it does not
+> carry the Fajr *tathwīb*. See [`docs/operations/third-party-assets.md`](docs/operations/third-party-assets.md).
+
+It is bundled **byte-for-byte as uploaded**, so the licence claim can be checked rather than
+believed: `sha1sum` the bundled file and compare it against the `sha1` the Commons API reports.
+Re-encoding would destroy that property, and would buy nothing — the recording is already
+band-limited to 9.5 kHz and integrates at −8.8 LUFS, some 8 LU *louder* than Android's own
+`Alarm_Classic.ogg`, so it needs no normalisation, and a mono re-encode saves 0.35 MB of a 10 MB
+bundle at measurable generational cost. `.ogg` is stored uncompressed in the APK by aapt2, so the
+download grows by exactly the file's size.
+
+Replacing it is one file: drop a different `adhan.ogg` in the same place. Fajr is conventionally
+called with an extra line — *الصلاة خير من النوم* — and the app ships one recording, so Fajr gets
+that one for now; `AdhanPlayerService.sourceFor` is the single place that changes when a Fajr
+recording is added.
+
+### Why a foreground service
+
+The adhan runs for two and a half minutes. A broadcast receiver lives for tens of seconds and its
+process is killable the moment it returns, so playing from the receiver gives the familiar bug where
+the adhan cuts off after twenty seconds on whichever device is under memory pressure. The alarm
+receiver therefore starts a `mediaPlayback` foreground service, and does it as its very first act:
+Android grants the foreground-service allowance for only ten seconds after delivering an **exact**
+alarm, and a preference read on a just-woken process can spend a real share of that. Everything the
+service needs is carried in the alarm intent for the same reason.
+
+An inexact alarm gets no such allowance at all, so on a device where the user has withheld the
+exact-alarm permission the service cannot legally start. That path falls back to a notification
+whose *channel* carries the recording, played by the system rather than by the app — no stop button
+and no completion callback, but it sounds.
+
+The adhan stops on the notification's **إيقاف** button, on dismissing the notification, on a volume
+key (a `MediaSession` holds remote volume for exactly that reason), on losing audio focus, and on a
+watchdog derived from the recording's own length. The wake lock carries the same deadline, so no
+failure of any of those can cost a battery. A refused audio-focus request is how the app learns —
+without `READ_PHONE_STATE` — that a call is in progress, and it then alerts silently instead of
+playing two and a half minutes of adhan into someone's conversation.
+
+**Play Console:** `mediaPlayback` is a declared foreground-service type and needs a declaration in
+the console before a release rolls out.
 
 ---
 
