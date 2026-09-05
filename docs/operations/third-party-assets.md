@@ -69,15 +69,21 @@ changing the recording in a way that shifts its generated id, orphans that sound
 
 ---
 
-## 2. Open gate — the recording has not been listened to
+## 2. Listening gate — cleared
 
-**Status: NOT CLEARED. This blocks the first release that ships the adhan.**
+**Status: CLEARED on 2026-09-05 by the project owner (@abdulmajeedx), for the recording whose
+hashes are in §1. Cleared for release from v1.2.0.**
 
-The recording was selected on licence, duration, loudness and structural grounds. Its structure is
-consistent with a complete adhan: thirteen pauses dividing 154 seconds into roughly fourteen
-phrases, which is the expected shape. **Nobody has listened to it, and structure is not text.**
+The recording was selected on licence, duration, loudness and structural grounds — its structure is
+consistent with a complete adhan, thirteen pauses dividing 154 seconds into roughly fourteen
+phrases — but structure is not text, and no automated check can read it. The owner listened to it
+end to end and confirmed the four points below.
 
-What a fluent listener has to confirm, end to end:
+**This clearance is specific to this file.** It travels with the hashes in §1, not with the path:
+replacing `res/raw/adhan.ogg` re-opens this gate, and the new recording must be listened to and
+this section re-dated before it ships.
+
+What was confirmed, and what has to be confirmed again for any replacement:
 
 1. It is a complete and correct adhan, not a partial recording, a rehearsal, or a different call.
 2. The wording matches the tradition this app intends to serve. Sunni and Twelver Shia formulas
@@ -90,7 +96,7 @@ What a fluent listener has to confirm, end to end:
 4. Audio quality is acceptable as an alarm: no clipping, no truncated ending, no extraneous speech
    or background content at either end.
 
-Record the outcome here, with the date and who checked, before the release rolls.
+Record the outcome here — the date, who listened, and which file — before any release rolls.
 
 ### If a different recording is wanted
 

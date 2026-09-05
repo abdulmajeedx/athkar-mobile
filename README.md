@@ -333,10 +333,10 @@ tone.
 | Bundled at | `android/app/src/main/res/raw/adhan.ogg` (1,229,032 bytes, Ogg Vorbis, 2:34) |
 | SHA-256 | `35fe06b08fe80505c550c33fed8a783fa9901ddc81ac884958b4be048f5b2a79` |
 
-> **Not yet cleared for release.** The recording was chosen on licence, length, loudness and
-> structure, and its structure is that of a complete adhan — but nobody has listened to it. Before
-> the first release that ships it, a fluent listener has to confirm the wording and that it does not
-> carry the Fajr *tathwīb*. See [`docs/operations/third-party-assets.md`](docs/operations/third-party-assets.md).
+Listened to end to end and cleared for release on 2026-09-05; the wording, the tradition and the
+absence of the Fajr *tathwīb* were all confirmed by ear, because no automated check can read a
+recording. That clearance belongs to this file and not to its path — replacing it re-opens the
+check. See [`docs/operations/third-party-assets.md`](docs/operations/third-party-assets.md).
 
 It is bundled **byte-for-byte as uploaded**, so the licence claim can be checked rather than
 believed: `sha1sum` the bundled file and compare it against the `sha1` the Commons API reports.
