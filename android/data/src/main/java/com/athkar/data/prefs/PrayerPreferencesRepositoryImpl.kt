@@ -15,6 +15,7 @@ import com.athkar.core.prayer.Coordinates
 import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
+import com.athkar.domain.AlertSound
 import com.athkar.domain.Place
 import com.athkar.domain.PrayerPreferences
 import com.athkar.domain.PrayerPreferencesRepository
@@ -46,6 +47,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
             place = prefs.toPlace(),
             notificationsEnabled = prefs[KEY_NOTIFICATIONS_ENABLED] ?: false,
             notifiedPrayers = prefs[KEY_NOTIFIED_PRAYERS].toPrayers(),
+            alertSound = AlertSound.fromName(prefs[KEY_ALERT_SOUND]),
             iqamaMinutes = prefs.toIqamaMinutes(),
         )
     }
@@ -87,6 +89,10 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
                 prayers.map { it.name }.toSet()
             }
         }
+    }
+
+    override suspend fun setAlertSound(sound: AlertSound) {
+        context.prayerDataStore.edit { it[KEY_ALERT_SOUND] = sound.name }
     }
 
     override suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int) {
@@ -145,6 +151,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         val KEY_PLACE_AUTOMATIC = booleanPreferencesKey("place_automatic")
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val KEY_NOTIFIED_PRAYERS = stringSetPreferencesKey("notified_prayers")
+        val KEY_ALERT_SOUND = stringPreferencesKey("alert_sound")
         const val NONE_SELECTED = "__none__"
 
         /** An hour is already implausible; the cap only keeps a bad write from rendering absurdly. */

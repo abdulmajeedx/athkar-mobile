@@ -4,11 +4,16 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.net.Uri
 import com.athkar.app.MainActivity
 import com.athkar.app.R
 import com.athkar.core.prayer.Prayer
+import com.athkar.domain.AlertSound
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,13 +21,14 @@ import javax.inject.Singleton
 /**
  * Posts the prayer-time alert.
  *
- * The alert is silent: it vibrates and appears, and makes no sound. Importance stays high so it
- * still surfaces over whatever is on screen — a prayer time the user has to go looking for is not
- * an alert.
+ * A channel's sound is frozen the moment Android creates it — `createNotificationChannel` on an
+ * existing id updates the name, the description and little else, and deleting a channel to change
+ * its tone throws away everything the user had customised on it. So the sound is not a property of
+ * one channel here; each choice has a channel of its own, and the choice picks between them at the
+ * moment the alert is posted.
  *
- * A channel's sound is fixed once Android has created it, so removing the tone meant a new channel
- * id and deleting the old one. Anything the user had customised on the old channel goes with it;
- * there is no API that would have let it carry over.
+ * Only the channels a user actually reaches are created, because every channel that exists is a row
+ * they have to read in the system settings.
  */
 @Singleton
 class PrayerNotifier @Inject constructor(
@@ -35,32 +41,115 @@ class PrayerNotifier @Inject constructor(
     /** Idempotent; safe to call on every app start and before every post. */
     fun ensureChannel() {
         val manager = notificationManager ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+        ensureSilentChannel(manager)
 
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "أوقات الصلاة",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "تنبيه صامت عند دخول وقت كل صلاة"
-            enableVibration(true)
-            setSound(null, null)
-        }
-        manager.createNotificationChannel(channel)
-
-        // The channel that carried the alarm tone. Left in place it would keep appearing in the
-        // system settings as a second, sounding "أوقات الصلاة" the user never asked for.
+        // The channel that carried the alarm tone before the sound became a setting. Left in place
+        // it would keep appearing in the system settings as a second, sounding "أوقات الصلاة" that
+        // no setting in the app controls.
         manager.deleteNotificationChannel(LEGACY_SOUNDING_CHANNEL_ID)
     }
 
-    /**
-     * Shows the alert for [prayer]. Each prayer keeps its own notification id so a later prayer
-     * replaces nothing — Fajr's alert should not vanish when Dhuhr's arrives.
-     */
-    fun notifyPrayer(prayer: Prayer, formattedTime: String, placeName: String?) {
-        ensureChannel()
-        val manager = notificationManager ?: return
+    /** The channel that makes no sound of its own. */
+    fun silentChannelId(): String {
+        notificationManager?.let(::ensureSilentChannel)
+        return CHANNEL_SILENT
+    }
 
+    /**
+     * The channel to post [sound] on, created if this is the first time it is needed.
+     *
+     * [AlertSound.ADHAN] maps to a channel that carries the recording as its own tone. That is the
+     * degraded path: normally [AdhanPlayerService] plays it, and the alert is posted silently over
+     * the top. It is used when the service cannot be started at all — when the user has withheld
+     * the exact-alarm permission, the system grants no foreground start, and a notification the
+     * platform sounds by itself is the only thing left that still works.
+     */
+    fun channelFor(sound: AlertSound): String {
+        val manager = notificationManager ?: return CHANNEL_SILENT
+        return when (sound) {
+            AlertSound.SILENT -> silentChannelId()
+
+            // The tone is resolved once, when the channel is first created, and a channel's sound
+            // cannot be rewritten afterwards. So a user who later changes their device's default
+            // alarm tone keeps hearing the old one here — and changes it, if they want to, on this
+            // channel in the system settings, which is the one place Android does allow it.
+            AlertSound.DEVICE_ALARM -> CHANNEL_DEVICE_ALARM.also {
+                ensureChannel(
+                    manager = manager,
+                    id = it,
+                    name = "أوقات الصلاة — نغمة المنبّه",
+                    description = "تنبيه بنغمة المنبّه المضبوطة في جهازك عند دخول وقت كل صلاة",
+                    sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                )
+            }
+
+            AlertSound.ADHAN -> CHANNEL_ADHAN.also {
+                ensureChannel(
+                    manager = manager,
+                    id = it,
+                    name = "أوقات الصلاة — الأذان",
+                    description = "الأذان عند دخول وقت كل صلاة",
+                    sound = adhanUri(),
+                )
+            }
+        }
+    }
+
+    /**
+     * The notification id for [prayer].
+     *
+     * One id per prayer, so a later prayer replaces nothing — Fajr's alert should not vanish when
+     * Dhuhr's arrives. [AdhanPlayerService] posts on the same id, which is what keeps the ongoing
+     * "playing" alert and the alert that outlives it from ever appearing as two.
+     */
+    fun notificationId(prayer: Prayer): Int = NOTIFICATION_ID_BASE + prayer.ordinal
+
+    /**
+     * The id the settings audition posts under.
+     *
+     * Its own, and not any prayer's: auditioning a sound must not be able to replace the alert for
+     * a prayer whose time has actually come.
+     */
+    fun previewNotificationId(): Int = PREVIEW_NOTIFICATION_ID
+
+    /** Shows the alert for [prayer] on the channel belonging to [sound]. */
+    fun notifyPrayer(
+        prayer: Prayer,
+        formattedTime: String,
+        placeName: String?,
+        sound: AlertSound,
+    ) {
+        val manager = notificationManager ?: return
+        manager.notify(
+            notificationId(prayer),
+            buildAlert(
+                prayer = prayer,
+                formattedTime = formattedTime,
+                placeName = placeName,
+                channelId = channelFor(sound),
+                playing = false,
+            ),
+        )
+    }
+
+    /**
+     * Builds the alert.
+     *
+     * When [playing] the adhan is sounding and the notification carries the button that stops it,
+     * and stays put rather than being swiped away by accident. When it is not, this is the ordinary
+     * notice that the time has come.
+     *
+     * A [preview] says so plainly. The same notification announcing a prayer time would be a lie
+     * the app told because the settings screen happened to reuse the player.
+     */
+    fun buildAlert(
+        prayer: Prayer,
+        formattedTime: String,
+        placeName: String?,
+        channelId: String,
+        playing: Boolean,
+        preview: Boolean = false,
+    ): Notification {
         val contentIntent = PendingIntent.getActivity(
             context,
             prayer.ordinal,
@@ -69,22 +158,109 @@ class PrayerNotifier @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val subtitle = listOfNotNull(formattedTime, placeName).joinToString(" — ")
-        val notification = Notification.Builder(context, CHANNEL_ID)
+        val subtitle = if (preview) {
+            "معاينة من الإعدادات"
+        } else {
+            listOfNotNull(formattedTime.takeIf { it.isNotBlank() }, placeName).joinToString(" — ")
+        }
+
+        val builder = Notification.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification_prayer)
-            .setContentTitle("حان الآن وقت صلاة ${prayer.arabicName}")
+            .setContentTitle(
+                if (preview) "تجربة صوت التنبيه" else "حان الآن وقت صلاة ${prayer.arabicName}",
+            )
             .setContentText(subtitle)
             .setCategory(Notification.CATEGORY_ALARM)
-            .setAutoCancel(true)
             .setContentIntent(contentIntent)
-            .build()
+            .setAutoCancel(!playing)
 
-        manager.notify(NOTIFICATION_ID_BASE + prayer.ordinal, notification)
+        if (playing) {
+            val stop = PendingIntent.getForegroundService(
+                context,
+                STOP_REQUEST_CODE,
+                AdhanPlayerService.stopIntent(context),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder
+                .setOngoing(true)
+                .setUsesChronometer(false)
+                .addAction(
+                    Notification.Action.Builder(null, "إيقاف الأذان", stop).build(),
+                )
+                // Swiping it away means the same thing as pressing stop; on Android 14 and later
+                // an ongoing notification can be swiped, and it would be a strange app that kept
+                // playing after the user dismissed the only thing on screen mentioning it.
+                .setDeleteIntent(stop)
+        }
+
+        return builder.build()
     }
 
+    private fun ensureSilentChannel(manager: NotificationManager) {
+        ensureChannel(
+            manager = manager,
+            id = CHANNEL_SILENT,
+            name = "أوقات الصلاة",
+            description = "تنبيه عند دخول وقت كل صلاة",
+            sound = null,
+        )
+    }
+
+    /**
+     * Creates the channel if it is missing.
+     *
+     * Existing channels are left completely alone rather than being rewritten with the current
+     * name: `createNotificationChannel` on a live id silently discards everything except the name,
+     * description and group, and calling it is how an app resurrects a channel the user deleted.
+     */
+    private fun ensureChannel(
+        manager: NotificationManager,
+        id: String,
+        name: String,
+        description: String,
+        sound: Uri?,
+    ) {
+        if (manager.getNotificationChannel(id) != null) return
+
+        val channel = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH).apply {
+            this.description = description
+            enableVibration(true)
+            if (sound == null) {
+                setSound(null, null)
+            } else {
+                setSound(
+                    sound,
+                    AudioAttributes.Builder()
+                        // The alarm usage is what carries a prayer time past silent and vibrate
+                        // mode. An alert the ringer swallows has failed at the one thing it exists
+                        // for.
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+            }
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    /**
+     * The bundled recording, as a URI the system's own notification player can read.
+     *
+     * Built from the generated id rather than the resource name so that the reference to
+     * `R.raw.adhan` is a real one in code: resource shrinking strips a raw resource that only ever
+     * appears inside a string.
+     */
+    private fun adhanUri(): Uri = Uri.parse(
+        "${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.adhan}",
+    )
+
     private companion object {
-        const val CHANNEL_ID = "prayer_times_silent"
+        const val CHANNEL_SILENT = "prayer_times_silent"
+        const val CHANNEL_DEVICE_ALARM = "prayer_times_device_alarm_v1"
+        const val CHANNEL_ADHAN = "prayer_times_adhan_v1"
         const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
         const val NOTIFICATION_ID_BASE = 4100
+        const val PREVIEW_NOTIFICATION_ID = 4150
+        const val STOP_REQUEST_CODE = 4200
     }
 }

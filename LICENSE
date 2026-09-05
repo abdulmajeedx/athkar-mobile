@@ -49,6 +49,28 @@ copyright holder. They do not, and cannot, extend to the following.
    them, and redistribution of that text — commercial redistribution above all
    — is the responsibility of whoever performs it.
 
+3. The adhan recording.
+
+   The application bundles one audio recording of the call to prayer, at
+   android/app/src/main/res/raw/adhan.ogg. It is the file "Beautiful adhan.ogg"
+   uploaded to Wikimedia Commons by the user Adam-synagda on 2022-04-29 and
+   dedicated by them to the public domain under the Creative Commons CC0 1.0
+   Universal Public Domain Dedication:
+
+     https://commons.wikimedia.org/wiki/File:Beautiful_adhan.ogg
+     https://creativecommons.org/publicdomain/zero/1.0/
+
+   It is bundled byte-for-byte as uploaded — SHA-1 a1fa4fd942401922c5c33018-
+   16384aae86956522, SHA-256 35fe06b08fe80505c550c33fed8a783fa9901ddc81ac8849-
+   58b4be048f5b2a79, 1,229,032 bytes — so that this claim can be checked
+   against the upstream file rather than taken on trust.
+
+   CC0 waives the uploader's rights worldwide and requires no attribution; the
+   credit above is given because it is right to, not because it is owed. This
+   licence claims nothing over that recording. The dedication is the
+   uploader's own declaration that the work is theirs to give, and anyone
+   redistributing the application relies on it as this project does.
+
 
                               ملخّص بالعربية
 
@@ -59,5 +81,8 @@ copyright holder. They do not, and cannot, extend to the following.
 ولا يشمل ذلك المكتبات مفتوحة المصدر التي يعتمد عليها التطبيق، فلكل منها رخصتها
 الخاصة، ولا يشمل نصوص «حصن المسلم» المضمّنة فيه — فالقرآن والحديث ليسا ملكًا
 لأحد، وحقوق الجمع والترتيب لصاحبها.
+
+ولا يشمل تسجيل الأذان المضمّن في التطبيق، فقد رفعه صاحبه إلى ويكيميديا كومنز
+وتنازل عن حقوقه فيه بموجب إعلان المشاع الإبداعي CC0، ولا يشترط نسبةً إلى أحد.
 
 هذا الملخّص للتيسير لا غير، والنص الإنجليزي أعلاه هو المُعتَدّ به عند الاختلاف.

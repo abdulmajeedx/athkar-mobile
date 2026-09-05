@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -81,6 +82,7 @@ import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
+import com.athkar.domain.AlertSound
 import com.athkar.domain.Cities
 import com.athkar.domain.Place
 import com.athkar.feature.prayertimes.PrayerTimesViewModel.Countdown
@@ -113,6 +115,9 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
         onSelectMadhab = viewModel::selectMadhab,
         onSetNotificationsEnabled = viewModel::setNotificationsEnabled,
         onTogglePrayerNotification = viewModel::togglePrayerNotification,
+        onSelectAlertSound = viewModel::selectAlertSound,
+        onPreviewAlertSound = viewModel::previewAlertSound,
+        onStopAlertSoundPreview = viewModel::stopAlertSoundPreview,
         onSetIqamaMinutes = viewModel::setIqamaMinutes,
         onDismissError = viewModel::dismissLocationError,
     )
@@ -130,6 +135,9 @@ private fun PrayerTimesScreen(
     onSelectMadhab: (Madhab) -> Unit,
     onSetNotificationsEnabled: (Boolean) -> Unit,
     onTogglePrayerNotification: (Prayer) -> Unit,
+    onSelectAlertSound: (AlertSound) -> Unit,
+    onPreviewAlertSound: (AlertSound) -> Unit,
+    onStopAlertSoundPreview: () -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
     onDismissError: () -> Unit,
 ) {
@@ -171,8 +179,12 @@ private fun PrayerTimesScreen(
                 NotificationSettings(
                     enabled = state.notificationsEnabled,
                     notifiedPrayers = state.notifiedPrayers,
+                    alertSound = state.alertSound,
                     onSetEnabled = onSetNotificationsEnabled,
                     onTogglePrayer = onTogglePrayerNotification,
+                    onSelectAlertSound = onSelectAlertSound,
+                    onPreviewAlertSound = onPreviewAlertSound,
+                    onStopAlertSoundPreview = onStopAlertSoundPreview,
                 )
                 SettingsRow(
                     method = state.method,
@@ -710,19 +722,25 @@ private fun MethodPickerDialog(
 private fun NotificationSettings(
     enabled: Boolean,
     notifiedPrayers: Set<Prayer>,
+    alertSound: AlertSound,
     onSetEnabled: (Boolean) -> Unit,
     onTogglePrayer: (Prayer) -> Unit,
+    onSelectAlertSound: (AlertSound) -> Unit,
+    onPreviewAlertSound: (AlertSound) -> Unit,
+    onStopAlertSoundPreview: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var exactAlarmsAllowed by remember { mutableStateOf(canScheduleExactAlarms(context)) }
+    var alarmVolumeSilent by remember { mutableStateOf(isAlarmVolumeSilent(context)) }
 
-    // The exact-alarm switch is flipped in system settings, so its state can only be re-read when
-    // the user comes back to this screen.
+    // Both of these are changed outside the app — one in system settings, the other with the volume
+    // keys — so returning to this screen is the only moment either can honestly be re-read.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 exactAlarmsAllowed = canScheduleExactAlarms(context)
+                alarmVolumeSilent = isAlarmVolumeSilent(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -749,7 +767,7 @@ private fun NotificationSettings(
                     Column(Modifier.weight(1f)) {
                         Text("تنبيه عند دخول الوقت", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "بنغمة المنبّه الافتراضية في جهازك",
+                            alertSound.description,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -773,6 +791,18 @@ private fun NotificationSettings(
                 if (enabled) {
                     Spacer(Modifier.height(Spacing.md))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(Spacing.md))
+
+                    AlertSoundPicker(
+                        selected = alertSound,
+                        alarmVolumeSilent = alarmVolumeSilent,
+                        onSelect = onSelectAlertSound,
+                        onPreview = onPreviewAlertSound,
+                        onStopPreview = onStopAlertSoundPreview,
+                    )
+
+                    Spacer(Modifier.height(Spacing.md))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Prayer.entries.forEach { prayer ->
                         Row(
                             modifier = Modifier
@@ -794,9 +824,19 @@ private fun NotificationSettings(
 
                     if (!exactAlarmsAllowed) {
                         Spacer(Modifier.height(Spacing.sm))
+                        // Without the exact-alarm permission the app is not allowed to start the
+                        // player at all, so the adhan falls back to a notification tone the system
+                        // cuts off at the first touch of the screen. Saying only "قد يتأخر" would
+                        // understate what the user actually loses.
                         Text(
-                            "التنبيهات الدقيقة غير مسموح بها لهذا التطبيق، لذا قد يتأخر التنبيه عن " +
-                                "وقته بدقائق. امنح الإذن ليصل في وقته تمامًا.",
+                            if (alertSound == AlertSound.ADHAN) {
+                                "التنبيهات الدقيقة غير مسموح بها لهذا التطبيق، فقد يتأخر التنبيه " +
+                                    "عن وقته بدقائق ولن يُرفع الأذان كاملًا. امنح الإذن ليصل في " +
+                                    "وقته ويُرفع الأذان تامًّا."
+                            } else {
+                                "التنبيهات الدقيقة غير مسموح بها لهذا التطبيق، لذا قد يتأخر " +
+                                    "التنبيه عن وقته بدقائق. امنح الإذن ليصل في وقته تمامًا."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -811,11 +851,89 @@ private fun NotificationSettings(
     }
 }
 
+/**
+ * What the alert sounds like.
+ *
+ * Each choice can be heard on the spot, because a sound picked from a list is otherwise first heard
+ * at four in the morning — and because the alarm volume being at zero is invisible until something
+ * fails to play. The audition uses the same service the prayer alarm uses, so what is heard here is
+ * exactly what will arrive then.
+ */
+@Composable
+private fun AlertSoundPicker(
+    selected: AlertSound,
+    alarmVolumeSilent: Boolean,
+    onSelect: (AlertSound) -> Unit,
+    onPreview: (AlertSound) -> Unit,
+    onStopPreview: () -> Unit,
+) {
+    var auditioning by remember { mutableStateOf(false) }
+
+    // Nothing should keep sounding once this section is gone from the screen.
+    DisposableEffect(Unit) { onDispose { onStopPreview() } }
+
+    Text("صوت التنبيه", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(Spacing.sm))
+
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        AlertSound.entries.forEach { sound ->
+            MadhabChip(sound.label, sound == selected) {
+                onSelect(sound)
+                onStopPreview()
+                auditioning = false
+            }
+        }
+    }
+
+    if (selected != AlertSound.SILENT) {
+        Spacer(Modifier.height(Spacing.sm))
+        Row(
+            modifier = Modifier.heightIn(min = Sizing.touchTarget),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedButton(
+                onClick = {
+                    if (auditioning) {
+                        onStopPreview()
+                    } else {
+                        onPreview(selected)
+                    }
+                    auditioning = !auditioning
+                },
+            ) {
+                Text(if (auditioning) "إيقاف" else "استمع")
+            }
+        }
+    }
+
+    if (alarmVolumeSilent) {
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            "صوت المنبّه مكتوم في جهازك، فلن تسمع التنبيه مهما اخترت هنا. ارفعه من إعدادات " +
+                "الصوت في النظام.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
 /** Below Android 12 exact alarms need no permission, so the gate does not exist. */
 private fun canScheduleExactAlarms(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
     val manager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
     return manager?.canScheduleExactAlarms() == true
+}
+
+/**
+ * True when the alarm stream is muted.
+ *
+ * Prayer alerts play on the alarm stream precisely so that silent mode does not swallow them, but
+ * that stream has a volume of its own, and a user who has slid it to zero has silenced every alert
+ * this app can make without touching anything in the app.
+ */
+private fun isAlarmVolumeSilent(context: Context): Boolean {
+    val manager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+    return manager.getStreamVolume(AudioManager.STREAM_ALARM) == 0
 }
 
 private fun openExactAlarmSettings(context: Context) {
