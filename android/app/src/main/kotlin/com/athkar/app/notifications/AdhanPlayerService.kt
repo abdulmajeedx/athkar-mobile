@@ -45,6 +45,15 @@ class AdhanPlayerService : Service() {
 
     @Inject lateinit var notifier: PrayerNotifier
 
+    /**
+     * The settings screen's audition button reads its label from here.
+     *
+     * The service is the only thing that knows whether sound is actually coming out: an audition
+     * ends on its own when the recording finishes, and never starts at all during a call or under
+     * total silence. A button tracking only its own taps would be wrong in all three cases.
+     */
+    @Inject lateinit var preview: AlertSoundPreviewImpl
+
     private val audioManager: AudioManager?
         get() = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
@@ -208,6 +217,7 @@ class AdhanPlayerService : Service() {
         player = started
         acquireWakeLock()
         startMediaSession()
+        if (alert.isPreview) preview.onPreviewPlaybackChanged(true)
     }
 
     private fun openPlayer(
@@ -396,6 +406,7 @@ class AdhanPlayerService : Service() {
 
         val alert = current
         current = null
+        preview.onPreviewPlaybackChanged(false)
         if (alert != null && !alert.isPreview) {
             leaveAlertBehind(alert)
         } else {

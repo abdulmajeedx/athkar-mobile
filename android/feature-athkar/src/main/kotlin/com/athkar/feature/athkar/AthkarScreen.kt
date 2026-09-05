@@ -1,12 +1,14 @@
 package com.athkar.feature.athkar
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,9 +29,9 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -46,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -56,9 +60,9 @@ import com.athkar.core.domain.AdhkarReminder
 import com.athkar.designsystem.Elevation
 import com.athkar.designsystem.LocalAthkarAccents
 import com.athkar.designsystem.PatternedSurface
-import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.ReadingSize
 import com.athkar.designsystem.Sizing
+import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
 import com.athkar.feature.athkar.AthkarViewModel.Intent
 import com.athkar.feature.athkar.AthkarViewModel.UiState
@@ -68,8 +72,8 @@ import com.athkar.feature.athkar.AthkarViewModel.UiState
  *
  * A flat list is the obvious alternative and the wrong one — the collection runs to hundreds of
  * readings across 132 chapters, and finding "أذكار النوم" by scrolling past all of them is not
- * finding it. Tapping a reading advances its tally and wraps back to zero at the target, which is
- * the whole interaction the app exists for.
+ * finding it. Tapping a reading advances its tally, which is the whole interaction the app exists
+ * for; the tally stops at its target and is cleared by a long press.
  */
 @Composable
 fun AthkarRoute(viewModel: AthkarViewModel = hiltViewModel()) {
@@ -322,6 +326,7 @@ private fun ChapterScreen(state: UiState, onIntent: (Intent) -> Unit) {
                     readingSize = state.readingSize,
                     count = state.counters[item.id] ?: 0,
                     onCount = { onIntent(Intent.Count(item.id, item.targetCount ?: 1)) },
+                    onResetCount = { onIntent(Intent.ResetCount(item.id)) },
                     onTogglePin = { onIntent(Intent.TogglePinned(item.id)) },
                 )
             }
@@ -329,15 +334,18 @@ private fun ChapterScreen(state: UiState, onIntent: (Intent) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DhikrCard(
     item: AdhkarReminder,
     readingSize: ReadingSize,
     count: Int,
     onCount: () -> Unit,
+    onResetCount: () -> Unit,
     onTogglePin: () -> Unit,
 ) {
     val accents = LocalAthkarAccents.current
+    val haptics = LocalHapticFeedback.current
     val target = item.targetCount ?: 1
     val isComplete = count >= target
 
@@ -352,7 +360,24 @@ private fun DhikrCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onCount),
+            .combinedClickable(
+                // Announced, because without it TalkBack offers "double tap to activate" without
+                // ever saying what activating a supplication does.
+                onClickLabel = "عدّ مرة",
+                onLongClickLabel = "تصفير العدّ",
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onResetCount()
+                },
+                onClick = {
+                    // A tick at the target: the count is kept without looking, so completion has to
+                    // be felt rather than seen.
+                    if (count + 1 >= target) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    onCount()
+                },
+            ),
     ) {
         Column(Modifier.padding(Spacing.lg)) {
             Text(
@@ -370,8 +395,11 @@ private fun DhikrCard(
             Spacer(Modifier.height(Spacing.md))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (target > 1) "$count / $target" else "$count",
-                    style = MaterialTheme.typography.labelLarge,
+                    // "3 من 33", not "3 / 33": spaces around the slash make it a standalone neutral,
+                    // which takes the RTL paragraph direction and reorders the two numbers around it
+                    // — a third of the way through a tasbih would read as though it were 33 of 3.
+                    if (target > 1) "$count من $target" else "$count",
+                    style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
                     color = if (isComplete) accents.gold else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(Spacing.md))

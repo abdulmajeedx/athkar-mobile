@@ -65,6 +65,15 @@ class PrayerTimesViewModel @Inject constructor(
         val notifiedPrayers: Set<Prayer> = emptySet(),
         val alertSound: AlertSound = AlertSound.DEFAULT,
         val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
+        /**
+         * Tomorrow's dawn, so the hours after Isha have something to count down to.
+         *
+         * Between Isha and midnight there is no later prayer today, and that is exactly when
+         * someone opens the app to see when they have to be up. Without this the screen said the
+         * day's prayers were over and showed nothing else — while the alarm for that same Fajr was
+         * already registered.
+         */
+        val tomorrowFajrAt: Instant? = null,
         val error: String? = null,
     )
 
@@ -78,6 +87,8 @@ class PrayerTimesViewModel @Inject constructor(
     data class Countdown(
         val next: Prayer? = null,
         val nextAt: Instant? = null,
+        /** True when [next] is tomorrow's Fajr rather than a prayer still to come today. */
+        val nextIsTomorrow: Boolean = false,
         val remaining: Duration? = null,
         val current: Prayer? = null,
         val currentAt: Instant? = null,
@@ -147,6 +158,15 @@ class PrayerTimesViewModel @Inject constructor(
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 iqamaMinutes = preferences.iqamaMinutes,
+                // A polar day tomorrow is not a reason to fail today, so this is computed
+                // separately and simply absent when it cannot be had.
+                tomorrowFajrAt = runCatching {
+                    PrayerTimes.calculate(
+                        coordinates = place.coordinates,
+                        date = date.plusDays(1),
+                        parameters = preferences.calculationParameters(),
+                    ).timeFor(Prayer.FAJR)
+                }.getOrNull(),
             )
         } catch (e: PolarDayException) {
             UiState(
@@ -170,6 +190,10 @@ class PrayerTimesViewModel @Inject constructor(
         val next = state.rows.firstOrNull { it.at.isAfter(now) }
         val current = state.rows.lastOrNull { !it.at.isAfter(now) }
 
+        // After Isha there is no later prayer today, and that is precisely the hour someone opens
+        // the app to find out when Fajr is. Roll on to tomorrow's rather than showing nothing.
+        val tomorrowFajr = state.tomorrowFajrAt?.takeIf { next == null && it.isAfter(now) }
+
         // Sunrise has no congregation and so no iqama; treating it like the others would put a
         // countdown on the screen for a prayer nobody is being called to.
         val iqamaMinutes = current
@@ -181,9 +205,10 @@ class PrayerTimesViewModel @Inject constructor(
             ?.at?.plus(iqamaMinutes.toLong(), java.time.temporal.ChronoUnit.MINUTES)
 
         return Countdown(
-            next = next?.prayer,
-            nextAt = next?.at,
-            remaining = next?.let { Duration.between(now, it.at) },
+            next = next?.prayer ?: tomorrowFajr?.let { Prayer.FAJR },
+            nextAt = next?.at ?: tomorrowFajr,
+            nextIsTomorrow = next == null && tomorrowFajr != null,
+            remaining = (next?.at ?: tomorrowFajr)?.let { Duration.between(now, it) },
             current = current?.prayer,
             currentAt = current?.at,
             sinceCurrent = current?.let { Duration.between(it.at, now) },
@@ -236,6 +261,9 @@ class PrayerTimesViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.setAlertSound(sound) }
     }
 
+    /** True while an audition is actually sounding, reported by the player rather than assumed. */
+    val isPreviewingAlertSound: StateFlow<Boolean> = alertSoundPreview.isPlaying
+
     /** Plays the chosen sound so the user hears it now rather than at dawn. */
     fun previewAlertSound(sound: AlertSound) = alertSoundPreview.play(sound)
 
@@ -263,6 +291,17 @@ class PrayerTimesViewModel @Inject constructor(
 
     fun setIqamaMinutes(prayer: Prayer, minutes: Int) {
         viewModelScope.launch { preferencesRepository.setIqamaMinutes(prayer, minutes) }
+    }
+
+    /**
+     * The user refused the location permission.
+     *
+     * Said out loud, because the system stops saying it: the second refusal shows no dialog at all,
+     * so without this the button simply absorbs the tap and the app looks broken.
+     */
+    fun reportLocationPermissionDenied() {
+        _locationError.value = "لم يُمنح إذن الموقع، فلا يمكن تحديده تلقائيًا. " +
+            "اختر مدينتك يدويًا، أو امنح الإذن من إعدادات التطبيق."
     }
 
     fun dismissLocationError() {

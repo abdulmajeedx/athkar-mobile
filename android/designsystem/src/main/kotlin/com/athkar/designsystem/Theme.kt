@@ -64,6 +64,12 @@ private val LightColors = lightColorScheme(
     onSurface = InkPrimary,
     surfaceVariant = IvoryMuted,
     onSurfaceVariant = InkSecondary,
+    // Dialogs, menus and the unchecked track of every switch are painted from these three roles,
+    // and Material's baseline for them is lavender — the same colour the navigation bar had to be
+    // named explicitly to escape. Unset, they put it back on half the surfaces in the app.
+    surfaceContainer = IvoryMuted,
+    surfaceContainerHigh = IvorySurface,
+    surfaceContainerHighest = Ivory,
     outline = Color(0xFFD3CDC0),
     outlineVariant = Color(0xFFE6E1D6),
     error = DangerLight,
@@ -87,6 +93,9 @@ private val DarkColors = darkColorScheme(
     onSurface = MoonPrimary,
     surfaceVariant = NightMuted,
     onSurfaceVariant = MoonSecondary,
+    surfaceContainer = NightMuted,
+    surfaceContainerHigh = Color(0xFF25332D),
+    surfaceContainerHighest = Color(0xFF2C3B34),
     outline = Color(0xFF3B4A44),
     outlineVariant = Color(0xFF27332E),
     error = DangerDark,
