@@ -21,9 +21,9 @@
 
 # SQLCipher's native layer calls back into Java by name. R8's default config keeps classes that
 # declare native methods, but not the types those methods hand back and forth.
--keep class net.sqlcipher.** { *; }
--keep interface net.sqlcipher.** { *; }
--dontwarn net.sqlcipher.**
+-keep class net.zetetic.database.** { *; }
+-keep interface net.zetetic.database.** { *; }
+-dontwarn net.zetetic.database.**
 
 # kotlinx.serialization generates a $serializer for every @Serializable type and reaches it through
 # the companion. The library ships rules for the common cases; these cover our own types explicitly.

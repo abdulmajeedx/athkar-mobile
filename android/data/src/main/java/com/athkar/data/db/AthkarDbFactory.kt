@@ -3,7 +3,7 @@ package com.athkar.data.db
 import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import net.sqlcipher.database.SupportFactory
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 /**
  * Provides the encrypted Room database via SQLCipher (AES-256-GCM keyed by SQLCipher 4 defaults).
@@ -17,7 +17,10 @@ class AthkarDbFactory(
     private val migrations: Array<androidx.room.migration.Migration>,
 ) {
     fun build(): AppDatabase {
-        val factory = SupportFactory(keyProvider.provideKeyBytes())
+        // sqlcipher-android, not the retired android-database-sqlcipher: the old artifact ships
+        // native libraries that are not 16 KB page-aligned, which Android 16 devices using 16 KB
+        // pages cannot load at all.
+        val factory = SupportOpenHelperFactory(keyProvider.provideKeyBytes())
         return Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
             .openHelperFactory(factory)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // WAL

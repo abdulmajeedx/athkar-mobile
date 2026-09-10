@@ -10,6 +10,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
+import androidx.core.net.toUri
 import com.athkar.app.MainActivity
 import com.athkar.app.R
 import com.athkar.core.prayer.Prayer
@@ -253,16 +254,15 @@ class PrayerNotifier @Inject constructor(
      * `R.raw.adhan` is a real one in code: resource shrinking strips a raw resource that only ever
      * appears inside a string.
      */
-    private fun adhanUri(): Uri = Uri.parse(
-        "${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.adhan}",
-    )
+    private fun adhanUri(): Uri =
+        "${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.adhan}".toUri()
 
     private companion object {
         const val CHANNEL_SILENT = "prayer_times_silent"
         const val CHANNEL_DEVICE_ALARM = "prayer_times_device_alarm_v1"
         const val CHANNEL_ADHAN = "prayer_times_adhan_v1"
         const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
-        val PRAYER_TAB_URI: Uri = Uri.parse("athkar://prayer")
+        val PRAYER_TAB_URI: Uri = "athkar://prayer".toUri()
         const val NOTIFICATION_ID_BASE = 4100
         const val PREVIEW_NOTIFICATION_ID = 4150
         const val STOP_REQUEST_CODE = 4200

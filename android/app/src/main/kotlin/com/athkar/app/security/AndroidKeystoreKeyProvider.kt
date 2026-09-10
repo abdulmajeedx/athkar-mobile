@@ -1,6 +1,8 @@
 package com.athkar.app.security
 
+import android.annotation.SuppressLint
 import android.content.Context
+import androidx.core.content.edit
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -26,6 +28,12 @@ import javax.inject.Singleton
  * STRIDE surface S1 (device theft): the database file and the sealed blob are both useless without
  * the hardware-bound sealing key, which cannot be exfiltrated from the device.
  */
+// Every SharedPreferences write here is commit(), never apply(), and the three of them are the
+// reason: this class persists the passphrase the encrypted database is sealed with. apply() returns
+// void and defers the write, so a process death between the call and the flush would leave a
+// database encrypted under a key that was never stored — unopenable, permanently. One of the call
+// sites feeds commit()'s boolean straight into check(); apply() cannot express that at all.
+@SuppressLint("ApplySharedPref")
 @Singleton
 class AndroidKeystoreKeyProvider @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -81,16 +89,21 @@ class AndroidKeystoreKeyProvider @Inject constructor(
     private fun discardUnusableState() {
         runCatching { keystore.deleteEntry(ALIAS) }
             .onFailure { android.util.Log.w(TAG, "could not delete the sealing key", it) }
-        prefs.edit().remove(PREF_SEALED_KEY).commit()
+        prefs.edit(commit = true) { remove(PREF_SEALED_KEY) }
         runCatching { context.deleteDatabase(DATABASE_NAME) }
             .onFailure { android.util.Log.w(TAG, "could not delete the unopenable database", it) }
     }
 
+    /**
+     * Not the KTX `edit {}` extension, here of all places: it returns Unit, and this is the one
+     * write whose success has to be *known*. Returning a passphrase that was never stored leaves
+     * the database sealed under a key nothing can produce again, so the write has to fail loudly
+     * rather than quietly.
+     */
+    @SuppressLint("UseKtx")
     private fun provisionFreshPassphrase(): ByteArray {
         val passphrase = ByteArray(KEY_SIZE_BYTES).also { SecureRandom().nextBytes(it) }
         val blob = seal(passphrase)
-        // commit(), not apply(): handing out a passphrase we failed to persist would leave the
-        // database encrypted under a key that no longer exists once the process dies.
         check(
             prefs.edit().putString(PREF_SEALED_KEY, Base64.encodeToString(blob, Base64.NO_WRAP)).commit()
         ) { "Unable to persist the sealed database key" }
@@ -156,7 +169,7 @@ class AndroidKeystoreKeyProvider @Inject constructor(
             keystore.deleteEntry(ALIAS)
             // The sealed blob is unreadable without the key above; drop it so the next launch
             // provisions a fresh pair instead of failing to unseal.
-            prefs.edit().remove(PREF_SEALED_KEY).commit()
+            prefs.edit(commit = true) { remove(PREF_SEALED_KEY) }
         }
     }
 

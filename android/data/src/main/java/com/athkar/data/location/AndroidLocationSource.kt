@@ -54,9 +54,20 @@ class AndroidLocationSource @Inject constructor(
         context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * The permission is checked by the only caller before this runs, and the catch is what covers
+     * the gap between that check and this call — the user can revoke it in settings while the fix
+     * is in flight. `runCatching` covered it too, but lint cannot see through it: it recognises a
+     * literal `catch (SecurityException)` and nothing else, and this project treats lint warnings
+     * as build failures.
+     */
     private fun bestLastKnown(manager: LocationManager): Location? =
         PROVIDERS.mapNotNull { provider ->
-            runCatching { manager.getLastKnownLocation(provider) }.getOrNull()
+            try {
+                manager.getLastKnownLocation(provider)
+            } catch (e: SecurityException) {
+                null
+            }
         }.maxByOrNull { it.time }
 
     /**
@@ -90,10 +101,25 @@ class AndroidLocationSource @Inject constructor(
                         continuation.invokeOnCancellation {
                             runCatching { manager.removeUpdates(listener) }
                         }
+                        // Literal catch rather than runCatching, for the same reason as
+                        // bestLastKnown: this is the form lint can see.
                         val registered = providers.any { provider ->
-                            runCatching {
-                                manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
-                            }.isSuccess
+                            try {
+                                manager.requestLocationUpdates(
+                                    provider,
+                                    0L,
+                                    0f,
+                                    listener,
+                                    Looper.getMainLooper(),
+                                )
+                                true
+                            } catch (e: SecurityException) {
+                                false
+                            } catch (e: IllegalArgumentException) {
+                                // A provider can disappear between the isProviderEnabled check
+                                // above and this call.
+                                false
+                            }
                         }
                         if (!registered && continuation.isActive) continuation.resume(null)
                     }

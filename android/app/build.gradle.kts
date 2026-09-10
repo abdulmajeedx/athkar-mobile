@@ -32,12 +32,12 @@ val releaseKeystore = signingValue("storeFile", "ATHKAR_KEYSTORE_FILE")
 
 android {
     namespace = "com.athkar.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.athkar.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         // Overridable so the release workflow can stamp the build from the git tag.
         versionCode = (providers.gradleProperty("athkar.versionCode").orNull ?: "1000").toInt()
         versionName = providers.gradleProperty("athkar.versionName").orNull ?: "1.0.0"
@@ -105,7 +105,7 @@ android {
             "GradleDependency",              // "newer version available" noise in this env
             "AndroidGradlePluginVersion",    // AGP newest-version advisory
             "NewerVersionAvailable",         // newest-version advisory
-            "OldTargetApi",                  // targetSdk 35 pinned deliberately
+            "OldTargetApi",                  // targetSdk tracks Play's floor, raised deliberately
         )
     }
 }
