@@ -35,7 +35,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.athkar.app"
+        applicationId = "com.athkar.mobile"
         minSdk = 26
         targetSdk = 36
         // Overridable so the release workflow can stamp the build from the git tag.
