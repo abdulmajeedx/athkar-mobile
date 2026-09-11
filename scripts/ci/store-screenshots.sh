@@ -42,9 +42,11 @@ launch() {
 launch
 shot 00-home
 
-# Every clickable element on the home screen that carries a label itself or through a descendant
-# (Compose marks the clickable row, and the text lives in a child), top to bottom.
-python3 - "$OUT/00-home.xml" > "$OUT/targets.txt" <<'PYEOF'
+# Every clickable element that carries a label itself or through a descendant (Compose marks the
+# clickable row, and the text lives in a child), top to bottom. Bottom-navigation tabs first so the
+# prayer-times and qibla screens are always among the captured ones.
+targets() {
+    python3 - "$1" <<'PYEOF'
 import re, sys
 import xml.etree.ElementTree as ET
 root = ET.parse(sys.argv[1]).getroot()
@@ -55,6 +57,7 @@ def label(node):
             return t
     return ""
 seen = set()
+rows = []
 for node in root.iter("node"):
     if node.get("clickable") != "true":
         continue
@@ -68,8 +71,13 @@ for node in root.iter("node"):
     if y2 - y1 < 8 or x2 - x1 < 8:
         continue
     seen.add(text)
-    print((x1 + x2) // 2, (y1 + y2) // 2, text.replace("\n", " ")[:40])
+    rows.append(((x1 + x2) // 2, (y1 + y2) // 2, text.replace("\n", " ")[:40]))
+nav = [r for r in rows if r[1] > 2100]
+for x, y, text in nav + [r for r in rows if r not in nav]:
+    print(x, y, text)
 PYEOF
+}
+targets "$OUT/00-home.xml" > "$OUT/targets.txt"
 echo "--- tap targets ---"
 cat "$OUT/targets.txt"
 echo "--- every labelled node on the home screen ---"
@@ -82,16 +90,30 @@ for n in ET.parse(sys.argv[1]).getroot().iter("node"):
         print(n.get("bounds"), "clickable" if n.get("clickable") == "true" else "-", n.get("class"), t[:60])
 PYEOF
 
+# adb reads from stdin, so the target list is read through fd 3 rather than the loop's stdin.
 i=1
-while read -r x y label; do
+while read -r -u 3 x y label; do
     [ "$i" -gt 12 ] && break
+    n=$(printf '%02d' "$i")
     launch
     adb shell input tap "$x" "$y"
     sleep 4
-    shot "$(printf '%02d' "$i")"
-    echo "$(printf '%02d' "$i") $label" >> "$OUT/index.txt"
+    shot "$n"
+    echo "$n $label" >> "$OUT/index.txt"
+    # One level deeper: the first labelled element of the new screen that the home screen did not
+    # have (e.g. the first dhikr of a chapter), skipping the bottom navigation.
+    deeper=$(targets "$OUT/$n.xml" | awk -v home="$OUT/targets.txt" '
+        BEGIN { while ((getline line < home) > 0) { sub(/^[0-9]+ [0-9]+ /, "", line); known[line] = 1 } }
+        $2 < 2100 { l = $0; sub(/^[0-9]+ [0-9]+ /, "", l); if (!(l in known)) { print; exit } }')
+    if [ -n "$deeper" ]; then
+        set -- $deeper
+        adb shell input tap "$1" "$2"
+        sleep 4
+        shot "$n-b"
+        echo "$n-b $label > ${*:3}" >> "$OUT/index.txt"
+    fi
     i=$((i + 1))
-done < "$OUT/targets.txt"
+done 3< "$OUT/targets.txt"
 
 adb shell am broadcast -a com.android.systemui.demo -e command exit > /dev/null || true
 ls -la "$OUT"
