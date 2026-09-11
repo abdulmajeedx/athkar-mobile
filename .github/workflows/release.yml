@@ -192,6 +192,17 @@ jobs:
             echo "mapping=mapping-${{ steps.version.outputs.name }}.txt" >> "$GITHUB_OUTPUT"
           fi
 
+      # Keep the signed build reachable from the run itself, so an expired distribution token
+      # never leaves a green build with nothing to download.
+      - name: Upload the signed build
+        uses: actions/upload-artifact@v4
+        with:
+          name: athkar-${{ steps.version.outputs.name }}
+          path: |
+            athkar-${{ steps.version.outputs.name }}.*
+            mapping-${{ steps.version.outputs.name }}.txt
+          if-no-files-found: error
+
       # Builds are published to a separate distribution repository so this one — the code, the
       # keys, the pipeline — stays private and uncluttered by binaries. It falls back to publishing
       # here when no token for the other repository is configured, so a clone still works.
