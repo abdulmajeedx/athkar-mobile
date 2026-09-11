@@ -36,28 +36,51 @@ shot() {
 launch() {
     adb shell am force-stop "$PKG"
     adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 > /dev/null
-    sleep 6
+    sleep 10
 }
 
 launch
 shot 00-home
 
-# Every clickable element with a label on the home screen, top to bottom.
-python3 - "$OUT/00-home.xml" > "$OUT/targets.txt" <<'EOF'
+# Every clickable element on the home screen that carries a label itself or through a descendant
+# (Compose marks the clickable row, and the text lives in a child), top to bottom.
+python3 - "$OUT/00-home.xml" > "$OUT/targets.txt" <<'PYEOF'
 import re, sys
-xml = open(sys.argv[1], encoding="utf-8").read()
+import xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+def label(node):
+    for n in node.iter():
+        t = (n.get("text") or n.get("content-desc") or "").strip()
+        if t:
+            return t
+    return ""
 seen = set()
-for node in re.finditer(r'<node [^>]*>', xml):
-    n = node.group(0)
-    if 'clickable="true"' not in n:
+for node in root.iter("node"):
+    if node.get("clickable") != "true":
         continue
-    label = re.search(r'text="([^"]*)"', n).group(1) or re.search(r'content-desc="([^"]*)"', n).group(1)
-    if not label or label in seen:
+    text = label(node)
+    if not text or text in seen:
         continue
-    x1, y1, x2, y2 = map(int, re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', n).groups())
-    seen.add(label)
-    print((x1 + x2) // 2, (y1 + y2) // 2, label)
-EOF
+    m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+    if not m:
+        continue
+    x1, y1, x2, y2 = map(int, m.groups())
+    if y2 - y1 < 8 or x2 - x1 < 8:
+        continue
+    seen.add(text)
+    print((x1 + x2) // 2, (y1 + y2) // 2, text.replace("\n", " ")[:40])
+PYEOF
+echo "--- tap targets ---"
+cat "$OUT/targets.txt"
+echo "--- every labelled node on the home screen ---"
+python3 - "$OUT/00-home.xml" <<'PYEOF'
+import sys
+import xml.etree.ElementTree as ET
+for n in ET.parse(sys.argv[1]).getroot().iter("node"):
+    t = (n.get("text") or n.get("content-desc") or "").strip()
+    if t:
+        print(n.get("bounds"), "clickable" if n.get("clickable") == "true" else "-", n.get("class"), t[:60])
+PYEOF
 
 i=1
 while read -r x y label; do
