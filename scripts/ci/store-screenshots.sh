@@ -28,9 +28,20 @@ adb shell am broadcast -a com.android.systemui.demo -e command notifications -e 
 
 shot() {
     adb exec-out screencap -p > "$OUT/$1.png"
-    adb shell uiautomator dump /sdcard/ui.xml > /dev/null
-    adb pull /sdcard/ui.xml "$OUT/$1.xml" > /dev/null
-    echo "captured $1"
+    # uiautomator occasionally answers "null root node" while a frame is still settling; retry.
+    local attempt
+    for attempt in 1 2 3 4 5 6; do
+        adb shell rm -f /sdcard/ui.xml
+        if adb shell uiautomator dump /sdcard/ui.xml | grep -q "dumped to" \
+            && adb pull /sdcard/ui.xml "$OUT/$1.xml" > /dev/null; then
+            echo "captured $1"
+            return 0
+        fi
+        echo "uiautomator dump failed for $1 (attempt $attempt), retrying"
+        sleep 3
+    done
+    echo "giving up on the UI dump for $1; keeping the image only"
+    echo '<hierarchy/>' > "$OUT/$1.xml"
 }
 
 launch() {
