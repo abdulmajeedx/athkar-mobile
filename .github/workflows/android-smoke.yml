@@ -81,7 +81,7 @@ jobs:
           scripts/ci/boot-emulator.sh ${{ matrix.api-level }} ${{ matrix.target }}
           scripts/ci/smoke-test.sh \
             android/app/build/outputs/apk/release/app-release.apk \
-            com.athkar.app
+            com.athkar.mobile
 
       - name: Upload logcat
         if: always()
