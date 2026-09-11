@@ -46,7 +46,7 @@ jobs:
         run: |
           export PATH="$ANDROID_HOME/build-tools/35.0.0:$ANDROID_HOME/platform-tools:$PATH"
           scripts/ci/boot-emulator.sh 34 google_apis
-          scripts/ci/store-screenshots.sh \
+          bash scripts/ci/store-screenshots.sh \
             android/app/build/outputs/apk/release/app-release.apk \
             com.athkar.mobile \
             store-screenshots
