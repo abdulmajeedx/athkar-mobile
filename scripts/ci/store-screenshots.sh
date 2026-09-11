@@ -17,6 +17,9 @@ adb install -r -g "$APK"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
 adb shell pm grant "$PKG" android.permission.ACCESS_COARSE_LOCATION || true
 adb emu geo fix 46.6753 24.7136 || true
+# The emulator runs on UTC; prayer times are shown in the device zone, so use the city's zone.
+adb shell setprop persist.sys.timezone Asia/Riyadh || true
+adb shell settings put global auto_time_zone 0 || true
 
 # A demo-mode status bar: fixed clock, full battery, no stray notification icons.
 adb shell settings put global sysui_demo_allowed 1
