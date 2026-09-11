@@ -18,8 +18,10 @@ adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
 adb shell pm grant "$PKG" android.permission.ACCESS_COARSE_LOCATION || true
 adb emu geo fix 46.6753 24.7136 || true
 # The emulator runs on UTC; prayer times are shown in the device zone, so use the city's zone.
-adb shell setprop persist.sys.timezone Asia/Riyadh || true
+{ adb root > /dev/null 2>&1 && sleep 3 && adb wait-for-device; } || echo "adb root unavailable"
 adb shell settings put global auto_time_zone 0 || true
+adb shell setprop persist.sys.timezone Asia/Riyadh || echo "could not set the time zone"
+adb shell getprop persist.sys.timezone
 
 # A demo-mode status bar: fixed clock, full battery, no stray notification icons.
 adb shell settings put global sysui_demo_allowed 1
@@ -29,22 +31,29 @@ adb shell am broadcast -a com.android.systemui.demo -e command battery -e level 
 adb shell am broadcast -a com.android.systemui.demo -e command network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4 > /dev/null
 adb shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false > /dev/null
 
-shot() {
-    adb exec-out screencap -p > "$OUT/$1.png"
-    # uiautomator occasionally answers "null root node" while a frame is still settling; retry.
+# uiautomator occasionally answers "null root node" while a frame is still settling; retry.
+ui_dump() {
     local attempt
     for attempt in 1 2 3 4 5 6; do
         adb shell rm -f /sdcard/ui.xml
         if adb shell uiautomator dump /sdcard/ui.xml | grep -q "dumped to" \
-            && adb pull /sdcard/ui.xml "$OUT/$1.xml" > /dev/null; then
-            echo "captured $1"
+            && adb pull /sdcard/ui.xml "$1" > /dev/null; then
             return 0
         fi
-        echo "uiautomator dump failed for $1 (attempt $attempt), retrying"
+        echo "uiautomator dump failed (attempt $attempt), retrying"
         sleep 3
     done
-    echo "giving up on the UI dump for $1; keeping the image only"
-    echo '<hierarchy/>' > "$OUT/$1.xml"
+    return 1
+}
+
+shot() {
+    adb exec-out screencap -p > "$OUT/$1.png"
+    if ui_dump "$OUT/$1.xml"; then
+        echo "captured $1"
+    else
+        echo "giving up on the UI dump for $1; keeping the image only"
+        echo '<hierarchy/>' > "$OUT/$1.xml"
+    fi
 }
 
 launch() {
@@ -55,9 +64,7 @@ launch() {
 
 # Taps the centre of the first node whose text or content-desc contains the given label.
 tap_label() {
-    adb shell rm -f /sdcard/ui.xml
-    adb shell uiautomator dump /sdcard/ui.xml > /dev/null || true
-    adb pull /sdcard/ui.xml /tmp/tap.xml > /dev/null || return 1
+    ui_dump /tmp/tap.xml || return 1
     local xy
     xy=$(python3 - /tmp/tap.xml "$1" <<'PYEOF'
 import re, sys
@@ -77,9 +84,7 @@ PYEOF
 }
 
 dump_labels() {
-    adb shell rm -f /sdcard/ui.xml
-    adb shell uiautomator dump /sdcard/ui.xml > /dev/null || true
-    adb pull /sdcard/ui.xml /tmp/labels.xml > /dev/null || return 0
+    ui_dump /tmp/labels.xml || return 0
     python3 - /tmp/labels.xml <<'PYEOF'
 import sys
 import xml.etree.ElementTree as ET
