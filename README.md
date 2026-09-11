@@ -444,3 +444,16 @@ on each new tag, and installs with one tap.
 The licence covers the code authored here. It does not extend to the
 open-source libraries the app is built on, each of which keeps its own licence, nor to the text of
 *Hisn al-Muslim* that the app bundles; see [`LICENSE`](LICENSE) for both.
+
+
+---
+
+## Related repositories
+
+The source, the signed builds and the sensitive operational docs are kept in separate repositories on purpose — so a wider audience for one (an installer, say) never doubles as a wider audience for another (a signing-key backup procedure).
+
+| Repository | Holds | Visibility |
+| --- | --- | --- |
+| [athkari-dist](https://github.com/abdulmajeedx/athkari-dist) | Signed release builds — published automatically by `release.yml` on every tag | Private |
+| [athkari-ops](https://github.com/abdulmajeedx/athkari-ops) | Operational runbooks (signing-key backup/restore) — maintained by hand, deliberately not CI-published | Private |
+| [athkari-privacy](https://github.com/abdulmajeedx/athkari-privacy) | Privacy-policy page for the Play Store / App Store listing, served via GitHub Pages | Public |
