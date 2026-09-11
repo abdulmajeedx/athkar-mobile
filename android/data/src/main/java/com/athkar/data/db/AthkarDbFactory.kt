@@ -20,6 +20,10 @@ class AthkarDbFactory(
         // sqlcipher-android, not the retired android-database-sqlcipher: the old artifact ships
         // native libraries that are not 16 KB page-aligned, which Android 16 devices using 16 KB
         // pages cannot load at all.
+        // sqlcipher-android does not load its native library on its own, unlike the retired
+        // artifact's SQLiteDatabase.loadLibs(). Without this the first open fails with
+        // UnsatisfiedLinkError: No implementation found for SQLiteConnection.nativeOpen.
+        System.loadLibrary("sqlcipher")
         val factory = SupportOpenHelperFactory(keyProvider.provideKeyBytes())
         return Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
             .openHelperFactory(factory)
