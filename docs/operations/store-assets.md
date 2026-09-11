@@ -30,7 +30,7 @@ Cross-references: `docs/operations/release-plan.md` (versioning, flags, rollout 
 
 | Field | App Store (iOS) | Play Store (Android) |
 |---|---|---|
-| **Package / bundle identifier** | `com.athkar.app` (example; register in Developer portal and use everywhere: project, entitlement, store) | `com.athkar.app` |
+| **Package / bundle identifier** | `com.athkar.app` (register in Developer portal and use everywhere: project, entitlement, store) | `com.athkar.mobile` — frozen at first Play publish; the iOS bundle id is a separate identifier and deliberately differs |
 | **App name (default)** | Athkar — Dhikr & Prayer (≤ 30 chars) | Athkar — Dhikr & Prayer |
 | **App name (localized, Arabic)** | أذكار | أذكار |
 | **Subtitle (iOS)** | Daily dhikr & prayer times, fully offline | — |

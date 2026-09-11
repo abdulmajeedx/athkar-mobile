@@ -41,9 +41,9 @@ permission, and every prayer time, qibla bearing and solar position is computed 
 | `ios/Athkar/*` | **Implemented + tested** — SwiftUI app, 13 tests, 0 failures on a macOS runner |
 | `backend/` | Scaffolded — contract-first, implementation pending |
 
-The Android app **assembles and runs**: `bundleRelease` produces a signed 9.4 MB AAB for Google
-Play and `assembleRelease` a 15 MB APK for direct install (`com.athkar.app`, minSdk 26,
-targetSdk 35), with three tabs — adhkar, prayer times and qibla. It ships the full text of
+The Android app **assembles and runs**: `bundleRelease` produces a signed 8.9 MB AAB for Google
+Play and `assembleRelease` a 10 MB APK for direct install (`com.athkar.mobile`, minSdk 26,
+targetSdk 36), with three tabs — adhkar, prayer times and qibla. It ships the full text of
 *Hisn al-Muslim* — 133 chapters, 287 readings — calls the adhan at each prayer time, and works with
 no network at all. iOS and the backend remain specification-only.
 
