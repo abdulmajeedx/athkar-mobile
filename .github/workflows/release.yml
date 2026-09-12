@@ -302,7 +302,11 @@ jobs:
 
       - name: Upload to Google Play
         if: steps.play.outputs.configured == 'true'
-        uses: r0adkll/upload-google-play@v1
+        # Pinned to the commit, not the tag: `v1` is a moving pointer its owner can retag at any
+        # time, which would silently swap the code that handles the signing key and the bundle.
+        # Verified against the GitHub API — `v1` is an annotated tag resolving to this commit.
+        # Re-verify before bumping.
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.athkar.mobile
