@@ -262,3 +262,55 @@ jobs:
               "${ASSETS[@]}"
           fi
 
+
+      # Delivery to Google Play, when — and only when — a service account is configured. Without
+      # the secret this is skipped and the tag still produces a validated, published GitHub release,
+      # so a clone of this repository keeps working exactly as before.
+      #
+      # It uploads as a DRAFT on purpose. Everything above this line is reproducible and reversible;
+      # a Play release is neither. A tag should not be able to put a build in front of users while
+      # nobody is looking — the last step stays a human pressing a button in the console, with the
+      # rollout percentage they choose.
+      # A step's own `env` is not readable from its `if`, and the `secrets` context is not
+      # available there at all, so the presence of the key becomes a step output first.
+      - name: Look for a Play service account
+        id: play
+        env:
+          HAS_PLAY_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        run: echo "configured=$HAS_PLAY_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Stage the release notes for Play
+        if: steps.play.outputs.configured == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          # The action reads one file per locale from this directory, named for the locale.
+          mkdir -p play-whatsnew
+          if [ -f "docs/release-notes/$VERSION.ar.txt" ]; then
+            cp "docs/release-notes/$VERSION.ar.txt" play-whatsnew/ar
+          else
+            printf 'إصلاحات وتحسينات داخلية.\n' > play-whatsnew/ar
+          fi
+          # Play truncates at 500 characters per locale rather than rejecting the upload, which
+          # silently loses the tail. Fail here instead, where it can be fixed.
+          LEN=$(wc -m < play-whatsnew/ar)
+          if [ "$LEN" -gt 500 ]; then
+            echo "::error::Play release notes are $LEN characters; the limit is 500"
+            exit 1
+          fi
+
+      - name: Upload to Google Play
+        if: steps.play.outputs.configured == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.athkar.mobile
+          releaseFiles: ${{ steps.artifact.outputs.bundle }}
+          # Without this the stack traces in Play's crash reports stay obfuscated by R8, and a
+          # crash report nobody can read is a crash report nobody fixes.
+          mappingFile: ${{ steps.artifact.outputs.mapping }}
+          # The closed-testing track this app actually uses. Override per run with the workflow
+          # input if a build is ever meant for a different one.
+          track: ${{ vars.PLAY_TRACK || 'alpha' }}
+          status: draft
