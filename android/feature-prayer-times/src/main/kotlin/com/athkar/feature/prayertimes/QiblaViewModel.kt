@@ -47,6 +47,11 @@ class QiblaViewModel @Inject constructor(
         val isFieldDisturbed: Boolean = false,
         /** The phone is too far from flat for its heading to be trusted. */
         val isTooTilted: Boolean = false,
+        /** Flat enough that the reading is as good as this device can give. */
+        val isLevel: Boolean = false,
+        /** Which way it is leaning, for the level drawn at the centre of the dial. */
+        val pitchDegrees: Float = 0f,
+        val rollDegrees: Float = 0f,
         /** Today's moments when the sun itself marks the qibla, which no magnet can disturb. */
         val sunAlignment: QiblaBySun? = null,
         val needsPlace: Boolean = false,
@@ -89,6 +94,9 @@ class QiblaViewModel @Inject constructor(
                                     heading.accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
                                 isFieldDisturbed = heading.isFieldDisturbed,
                                 isTooTilted = heading.isTooTilted,
+                                isLevel = heading.isLevel,
+                                pitchDegrees = heading.pitchDegrees,
+                                rollDegrees = heading.rollDegrees,
                             )
                         }
                         .onStart { emit(base) }

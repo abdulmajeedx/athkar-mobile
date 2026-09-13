@@ -35,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -54,6 +53,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.LocalSkyPhase
+import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
 import com.athkar.domain.Dhikr
@@ -85,9 +86,11 @@ fun TasbihRoute(viewModel: TasbihViewModel = hiltViewModel()) {
 /**
  * The tasbih.
  *
- * Its own surface rather than the app's parchment: this is the one screen held in the dark, counted
- * on without being read, and a night-deep ground with a single lit ring is both easier on the eye
- * then and unmistakably a different tool from the pages behind it.
+ * Its own surface rather than the app's page: this is the one screen counted on without being read,
+ * and a deep ground with a single lit ring is both easier on the eye and unmistakably a different
+ * tool from the pages behind it. The ground is the hour's sky, like every other patterned surface in
+ * the app, so the tasbih belongs to the same evening as the prayer screen without borrowing its
+ * layout.
  *
  * The whole area above the controls counts. A tasbih is used without looking — the thumb should
  * find it anywhere, not hunt for a button.
@@ -100,41 +103,37 @@ private fun TasbihScreen(
     onSelect: (Dhikr) -> Unit,
     onRetarget: (Int) -> Unit,
 ) {
-    val accents = LocalAthkarAccents.current
-
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(accents.nightGradientTop, accents.nightGradientBottom),
-                    ),
-                ),
+        PatternedSurface(
+            sky = LocalSkyPhase.current,
+            patternAlpha = 0.05f,
+            modifier = Modifier.fillMaxSize(),
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    // No ripple: a circle flashing under the thumb a hundred times is noise, and
-                    // the ring and the number already answer every tap.
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClickLabel = "عُدّ",
-                        onClick = onCount,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                CounterRing(state = state)
-            }
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        // No ripple: a circle flashing under the thumb a hundred times is noise,
+                        // and the ring and the number already answer every tap.
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClickLabel = "عُدّ",
+                            onClick = onCount,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CounterRing(state = state)
+                }
 
-            Controls(
-                state = state,
-                onReset = onReset,
-                onSelect = onSelect,
-                onRetarget = onRetarget,
-            )
+                Controls(
+                    state = state,
+                    onReset = onReset,
+                    onSelect = onSelect,
+                    onRetarget = onRetarget,
+                )
+            }
         }
     }
 }

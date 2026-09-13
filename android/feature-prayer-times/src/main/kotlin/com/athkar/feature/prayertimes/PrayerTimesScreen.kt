@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -31,7 +30,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -60,16 +58,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.athkar.core.prayer.CalculationMethod
-import com.athkar.core.prayer.HighLatitudeRule
-import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
 import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.LocalSkyPhase
 import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
-import com.athkar.domain.AlertSound
 import com.athkar.domain.Cities
 import com.athkar.domain.Place
 import com.athkar.feature.prayertimes.PrayerTimesViewModel.Countdown
@@ -82,7 +77,6 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
     val countdown by viewModel.countdown.collectAsStateWithLifecycle()
     val isLocating by viewModel.isLocating.collectAsStateWithLifecycle()
     val locationError by viewModel.locationError.collectAsStateWithLifecycle()
-    val isPreviewingAlertSound by viewModel.isPreviewingAlertSound.collectAsStateWithLifecycle()
 
     // The permission result drives the fix directly: asking and then not using the answer is the
     // classic way to leave a user staring at an unchanged screen after they granted it.
@@ -99,18 +93,7 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
         locationError = locationError,
         onUseDeviceLocation = { permissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
         onSelectPlace = viewModel::selectPlace,
-        onSelectMethod = viewModel::selectMethod,
-        onSelectMadhab = viewModel::selectMadhab,
-        onSetNotificationsEnabled = viewModel::setNotificationsEnabled,
-        onTogglePrayerNotification = viewModel::togglePrayerNotification,
-        onSelectAlertSound = viewModel::selectAlertSound,
-        onPreviewAlertSound = viewModel::previewAlertSound,
-        onStopAlertSoundPreview = viewModel::stopAlertSoundPreview,
-        onSelectHighLatitudeRule = viewModel::selectHighLatitudeRule,
-        onSetPreAdhanMinutes = viewModel::setPreAdhanMinutes,
-        onSetIqamaMinutes = viewModel::setIqamaMinutes,
         onDismissError = viewModel::dismissLocationError,
-        isPreviewingAlertSound = isPreviewingAlertSound,
     )
 }
 
@@ -122,45 +105,13 @@ private fun PrayerTimesScreen(
     locationError: String?,
     onUseDeviceLocation: () -> Unit,
     onSelectPlace: (Place) -> Unit,
-    onSelectMethod: (CalculationMethod) -> Unit,
-    onSelectMadhab: (Madhab) -> Unit,
-    onSetNotificationsEnabled: (Boolean) -> Unit,
-    onTogglePrayerNotification: (Prayer) -> Unit,
-    onSelectAlertSound: (AlertSound) -> Unit,
-    onPreviewAlertSound: (AlertSound) -> Unit,
-    onStopAlertSoundPreview: () -> Unit,
-    onSelectHighLatitudeRule: (HighLatitudeRule?) -> Unit,
-    onSetPreAdhanMinutes: (Int) -> Unit,
-    onSetIqamaMinutes: (Prayer, Int) -> Unit,
     onDismissError: () -> Unit,
-    isPreviewingAlertSound: Boolean,
 ) {
     var showCityPicker by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
             state.isLoading -> LoadingState()
-
-            showSettings -> {
-                // System back leaves the settings before it leaves the tab.
-                BackHandler { showSettings = false }
-                PrayerSettingsScreen(
-                    state = state,
-                    auditioning = isPreviewingAlertSound,
-                    onBack = { showSettings = false },
-                    onSelectMethod = onSelectMethod,
-                    onSelectMadhab = onSelectMadhab,
-                    onSetNotificationsEnabled = onSetNotificationsEnabled,
-                    onTogglePrayerNotification = onTogglePrayerNotification,
-                    onSelectAlertSound = onSelectAlertSound,
-                    onPreviewAlertSound = onPreviewAlertSound,
-                    onStopAlertSoundPreview = onStopAlertSoundPreview,
-                    onSelectHighLatitudeRule = onSelectHighLatitudeRule,
-                    onSetPreAdhanMinutes = onSetPreAdhanMinutes,
-                    onSetIqamaMinutes = onSetIqamaMinutes,
-                )
-            }
 
             state.needsPlace -> PlacePrompt(
                 isLocating = isLocating,
@@ -181,7 +132,6 @@ private fun PrayerTimesScreen(
                     isLocating = isLocating,
                     onChangePlace = { showCityPicker = true },
                     onUseDeviceLocation = onUseDeviceLocation,
-                    onOpenSettings = { showSettings = true },
                 )
                 if (state.error != null) {
                     ErrorCard(state.error)
@@ -247,17 +197,15 @@ private fun HeroCard(
     isLocating: Boolean,
     onChangePlace: () -> Unit,
     onUseDeviceLocation: () -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
-    val accents = LocalAthkarAccents.current
     val zone = remember { ZoneId.systemDefault() }
 
-    // The sky of the prayer that has begun. An app that tells the time by the sun and stays one
-    // colour all day is throwing away the most obvious thing it knows.
-    val sky = SkyPhase.forPrayerOrdinal(countdown.current?.ordinal)
+    // The sky the whole app is wearing, which is this prayer's — the theme computes it from these
+    // same times. Read from there rather than derived again here, so the hero can never disagree
+    // with the header of the tab beside it.
+    val sky = LocalSkyPhase.current
 
     PatternedSurface(
-        sky = sky,
         shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -297,14 +245,6 @@ private fun HeroCard(
                             modifier = Modifier.size(Sizing.iconSm),
                         )
                     }
-                }
-                IconButton(onClick = onOpenSettings, modifier = Modifier.size(Sizing.touchTarget)) {
-                    Icon(
-                        Icons.Default.Settings,
-                        contentDescription = "إعدادات الصلاة",
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(Sizing.iconSm),
-                    )
                 }
             }
 

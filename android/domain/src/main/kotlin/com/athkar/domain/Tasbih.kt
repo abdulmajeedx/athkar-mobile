@@ -15,7 +15,18 @@ enum class Dhikr(val arabic: String, val defaultTarget: Int) {
     ALLAHU_AKBAR("الله أكبر", 33),
     LA_ILAHA_ILLA_ALLAH("لا إله إلا الله", 100),
     ASTAGHFIRULLAH("أستغفر الله", 100),
-    SALAWAT("اللهم صلِّ على محمد", 100),
+
+    /**
+     * The salawat, in full.
+     *
+     * It was "اللهم صلِّ على محمد" — half a formula. Naming the Prophet obliges the salutation with
+     * it, and the counted phrase is the salutation, so cutting the سلام out of it left the user
+     * counting an incomplete one a hundred times over.
+     */
+    SALAWAT("اللهم صلِّ وسلِّم على نبينا محمد", 100),
+
+    /** The Ibrahimic form, for whoever counts that one instead. */
+    SALAWAT_AAL("اللهم صلِّ على محمد وعلى آل محمد", 100),
     ;
 
     companion object {

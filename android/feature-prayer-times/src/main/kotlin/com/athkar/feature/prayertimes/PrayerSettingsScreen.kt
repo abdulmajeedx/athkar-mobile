@@ -60,9 +60,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.core.prayer.CalculationMethod
 import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
@@ -78,12 +80,44 @@ import com.athkar.feature.prayertimes.PrayerTimesViewModel.UiState
 private const val HIGH_LATITUDE_THRESHOLD = 48.0
 
 /**
+ * The prayer settings as a destination the rest of the app can open.
+ *
+ * They used to hang off a gear on the prayer screen's header, which meant the app's settings were
+ * in three places — this gear, the type menu in the reader's toolbar, and nowhere at all for the
+ * theme. This is the entry point the single settings tab uses; the screen below is unchanged.
+ */
+@Composable
+fun PrayerSettingsRoute(
+    onBack: () -> Unit,
+    viewModel: PrayerTimesViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val auditioning by viewModel.isPreviewingAlertSound.collectAsStateWithLifecycle()
+
+    PrayerSettingsScreen(
+        state = state,
+        auditioning = auditioning,
+        onBack = onBack,
+        onSelectMethod = viewModel::selectMethod,
+        onSelectMadhab = viewModel::selectMadhab,
+        onSetNotificationsEnabled = viewModel::setNotificationsEnabled,
+        onTogglePrayerNotification = viewModel::togglePrayerNotification,
+        onSelectAlertSound = viewModel::selectAlertSound,
+        onPreviewAlertSound = viewModel::previewAlertSound,
+        onStopAlertSoundPreview = viewModel::stopAlertSoundPreview,
+        onSelectHighLatitudeRule = viewModel::selectHighLatitudeRule,
+        onSetPreAdhanMinutes = viewModel::setPreAdhanMinutes,
+        onSetIqamaMinutes = viewModel::setIqamaMinutes,
+    )
+}
+
+/**
  * Everything about how the times are computed and announced, on a screen of its own.
  *
  * It used to sit under the schedule, so reaching the day's times meant scrolling past five settings
  * sections, and reaching the settings meant scrolling past the times. Neither is what either reader
  * came for. The prayer screen now shows the prayer times and nothing else, and this opens from the
- * gear beside the place name.
+ * settings tab, where the rest of the app's settings are.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

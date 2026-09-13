@@ -18,9 +18,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -56,8 +60,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.core.prayer.QiblaBySun
 import com.athkar.designsystem.LocalAthkarAccents
+import com.athkar.designsystem.LocalSkyPhase
 import com.athkar.designsystem.PatternedSurface
-import com.athkar.designsystem.SkyPhase
+import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
 import com.athkar.feature.prayertimes.QiblaViewModel.UiState
 import java.time.ZoneId
@@ -76,6 +81,15 @@ private fun degreesLabel(degrees: Int): String = when {
 
 /** Within this many degrees the phone is treated as facing the qibla. */
 private const val ALIGNMENT_TOLERANCE_DEGREES = 4f
+
+/**
+ * The tilt, in degrees, that pushes the level's bubble all the way to the edge of its ring.
+ *
+ * Twenty rather than ninety: the bubble has to visibly move for the small corrections that decide
+ * whether the reading is trustworthy. Scaled to the full range it would barely stir for the ten
+ * degrees that matter, which is a level that looks fine while the compass is wrong.
+ */
+private const val LEVEL_FULL_SCALE_DEGREES = 20f
 
 @Composable
 fun QiblaRoute(viewModel: QiblaViewModel = hiltViewModel()) {
@@ -132,7 +146,13 @@ private fun QiblaContent(state: UiState) {
     )
 
     val offAngle = heading?.let { shortestDelta(qibla.toFloat(), it) }
-    val isAligned = offAngle != null && abs(offAngle) <= ALIGNMENT_TOLERANCE_DEGREES
+    val isPointing = offAngle != null && abs(offAngle) <= ALIGNMENT_TOLERANCE_DEGREES
+
+    // Pointing the right way is only half of it. A magnetometer reads the horizontal component of
+    // the field, so a phone held at a reading angle is projecting that field onto a plane that is
+    // not the ground — and it reports the resulting bearing with no less confidence. Most people
+    // have never been told this, so the screen only confirms the qibla when the level agrees.
+    val isAligned = isPointing && state.isLevel
 
     // A pulse on crossing into alignment, not while inside it: the phone is held out and turned,
     // often at arm's length, and the moment it is right is the one thing the screen cannot tell
@@ -161,7 +181,6 @@ private fun QiblaContent(state: UiState) {
         )
 
         PatternedSurface(
-            sky = SkyPhase.NIGHT,
             shape = CircleShape,
             patternAlpha = 0.07f,
             modifier = Modifier
@@ -173,6 +192,10 @@ private fun QiblaContent(state: UiState) {
                 qiblaBearing = qibla.toFloat(),
                 offAngle = offAngle,
                 isAligned = isAligned,
+                isLevel = state.isLevel,
+                pitchDegrees = state.pitchDegrees,
+                rollDegrees = state.rollDegrees,
+                hasHeading = heading != null,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -218,6 +241,10 @@ private fun QiblaContent(state: UiState) {
                             "لا يوجد حسّاس بوصلة في هذا الجهاز — استعمل الزاوية أعلاه مع بوصلة أخرى."
                         heading == null -> "جارٍ قراءة البوصلة…"
                         isAligned -> "أنت تواجه القبلة"
+                        // Pointing the right way but leaning: naming that as the one remaining step
+                        // is the difference between a user who levels the phone and one who decides
+                        // the app cannot make up its mind.
+                        isPointing -> "اتجاهك صحيح — سوِّ الجهاز أفقيًا ليثبت"
                         // Which way, and how far. "Turn until the marks line up" is a description
                         // of the screen, not an instruction — it leaves the user to guess the
                         // direction and discover it by turning the wrong way first.
@@ -228,16 +255,20 @@ private fun QiblaContent(state: UiState) {
                         }
                         else -> "أدِر الجهاز حتى تنطبق العلامة الذهبية على المؤشر"
                     },
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     // Spoken as it changes, so the dial is usable without seeing it.
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     color = if (isAligned) {
                         MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        MaterialTheme.colorScheme.onSurface
                     },
                     textAlign = TextAlign.Center,
                 )
+                if (state.hasCompass && heading != null) {
+                    Spacer(Modifier.height(Spacing.md))
+                    AccuracyRow(state = state)
+                }
                 if (state.needsCalibration && state.hasCompass) {
                     Spacer(Modifier.height(Spacing.sm))
                     Warning("دقّة البوصلة منخفضة — حرّك الجهاز على شكل الرقم 8 لمعايرته.")
@@ -250,8 +281,10 @@ private fun QiblaContent(state: UiState) {
                     )
                 }
                 if (state.isTooTilted) {
+                    // Past the point where the bubble is merely off-centre: at this angle the
+                    // bearing itself is not worth reading, so it is said in words as well.
                     Spacer(Modifier.height(Spacing.sm))
-                    Warning("أمسك الجهاز مستويًا؛ الميل الشديد يفسد قراءة البوصلة.")
+                    Warning("أمسك الجهاز أفقيًا كالصينية؛ الميل الشديد يفسد قراءة البوصلة.")
                 }
             }
         }
@@ -327,6 +360,44 @@ private fun SunMoment(time: String, instruction: String) {
     }
 }
 
+/**
+ * The three conditions a magnetic bearing depends on, stated rather than assumed.
+ *
+ * A compass that is wrong looks exactly like a compass that is right — it has no way to know. These
+ * are the checks the app *can* run, so it shows all three and their verdicts instead of a single
+ * "accuracy" word that means nothing to the person holding the phone.
+ */
+@Composable
+private fun AccuracyRow(state: UiState) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Check(label = "مستوٍ", satisfied = state.isLevel)
+        Check(label = "مُعايَر", satisfied = !state.needsCalibration)
+        Check(label = "بلا تشويش", satisfied = !state.isFieldDisturbed)
+    }
+}
+
+@Composable
+private fun Check(label: String, satisfied: Boolean) {
+    val colour = if (satisfied) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = if (satisfied) Icons.Default.Check else Icons.Default.Close,
+            contentDescription = if (satisfied) "متحقق" else "غير متحقق",
+            tint = colour,
+            modifier = Modifier.size(Sizing.iconSm),
+        )
+        Spacer(Modifier.width(Spacing.xxs))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = colour)
+    }
+}
+
 @Composable
 private fun Warning(text: String) {
     Text(
@@ -343,19 +414,37 @@ private fun CompassDial(
     qiblaBearing: Float,
     offAngle: Float?,
     isAligned: Boolean,
+    isLevel: Boolean,
+    pitchDegrees: Float,
+    rollDegrees: Float,
+    hasHeading: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val accents = LocalAthkarAccents.current
-    // The dial sits on the night disc, so every mark is drawn in light rather than in the scheme's
-    // on-surface colours, which are meant for the ivory page behind it.
+    val sky = LocalSkyPhase.current
+    // The dial sits on the sky disc, so every mark is drawn in light rather than in the scheme's
+    // on-surface colours, which are meant for the page behind it.
     val hairline = Color.White.copy(alpha = 0.22f)
     val tickColor = Color.White.copy(alpha = 0.30f)
     val majorTick = Color.White.copy(alpha = 0.55f)
     val cardinalColor = Color.White.copy(alpha = 0.90f)
     val northColor = Color(0xFFFF8A80)
-    val needleColor = if (isAligned) accents.gold else SkyPhase.NIGHT.accent
+    val needleColor = if (isAligned) accents.gold else sky.accent
     val tailColor = Color.White.copy(alpha = 0.28f)
     val textMeasurer = rememberTextMeasurer()
+
+    // The bubble is eased for the same reason the needle is: a level fed raw sensor values twitches
+    // continuously, and a bubble that will not settle reads as a phone that cannot be held still.
+    val bubblePitch by animateFloatAsState(
+        targetValue = pitchDegrees.coerceIn(-LEVEL_FULL_SCALE_DEGREES, LEVEL_FULL_SCALE_DEGREES),
+        animationSpec = tween(durationMillis = 160),
+        label = "level-pitch",
+    )
+    val bubbleRoll by animateFloatAsState(
+        targetValue = rollDegrees.coerceIn(-LEVEL_FULL_SCALE_DEGREES, LEVEL_FULL_SCALE_DEGREES),
+        animationSpec = tween(durationMillis = 160),
+        label = "level-roll",
+    )
 
     val cardinalStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = cardinalColor)
     val northStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = northColor)
@@ -435,13 +524,93 @@ private fun CompassDial(
                 tailColor = tailColor,
                 aligned = isAligned,
             )
+
+            // The Kaaba at the end of the needle, on the rim. The dial already says *where*; this
+            // says what is there, which is the only reason anyone is holding the phone out.
+            drawKaaba(
+                centre = center.polar(qiblaBearing, rim - radius * 0.02f),
+                size = radius * 0.11f,
+                body = Color(0xFF14110E),
+                band = needleColor,
+            )
         }
 
-        // Hub and the fixed mark, drawn outside the rotation: they belong to the phone, not the dial.
-        drawCircle(color = needleColor, radius = radius * 0.055f, center = center)
-        drawCircle(color = SkyPhase.NIGHT.bottom, radius = radius * 0.022f, center = center)
+        // The level and the fixed mark, drawn outside the rotation: they belong to the phone, not
+        // to the dial, and must not turn with it.
+        drawLevel(
+            centre = center,
+            radius = radius,
+            pitch = bubblePitch,
+            roll = bubbleRoll,
+            level = isLevel && hasHeading,
+            bubbleColor = if (isLevel) accents.gold else Color.White.copy(alpha = 0.75f),
+        )
         drawIndex(center = center, radius = radius, color = Color.White)
     }
+}
+
+/**
+ * A spirit level where the hub of the compass used to be.
+ *
+ * The hub was a dot that said nothing. This is the one thing a magnetic compass needs from its user
+ * and never asks for: the sensor reads the horizontal component of the field, so a phone held at a
+ * reading angle projects that field onto the wrong plane and reports the resulting bearing with
+ * complete confidence. Almost nobody knows that. A bubble does not have to be explained.
+ *
+ * The bubble floats to the *raised* side, as one in glass would: with the screen's +y toward the top
+ * of the device and +z out of it, a positive pitch means the top edge has gone down, so the bubble
+ * runs to the bottom of the screen — and a positive roll drops the right edge, so it runs left.
+ */
+private fun DrawScope.drawLevel(
+    centre: Offset,
+    radius: Float,
+    pitch: Float,
+    roll: Float,
+    level: Boolean,
+    bubbleColor: Color,
+) {
+    val well = radius * 0.15f
+    val bubble = radius * 0.055f
+    val travel = well - bubble
+
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.35f),
+        radius = well,
+        center = centre,
+    )
+    drawCircle(
+        color = if (level) bubbleColor.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.35f),
+        radius = well,
+        center = centre,
+        style = Stroke(width = radius * 0.012f),
+    )
+
+    val offset = Offset(
+        x = centre.x - (roll / LEVEL_FULL_SCALE_DEGREES) * travel,
+        y = centre.y + (pitch / LEVEL_FULL_SCALE_DEGREES) * travel,
+    )
+    drawCircle(color = bubbleColor, radius = bubble, center = offset)
+}
+
+/**
+ * The Kaaba, as a cube with its band: a square with a horizontal stripe across the upper third.
+ *
+ * Drawn rather than bundled as an image so it takes the needle's colour when the direction is
+ * confirmed, and so it stays sharp at whatever size the dial ends up on a given screen.
+ */
+private fun DrawScope.drawKaaba(centre: Offset, size: Float, body: Color, band: Color) {
+    val half = size / 2f
+    drawRoundRect(
+        color = body,
+        topLeft = Offset(centre.x - half, centre.y - half),
+        size = Size(size, size),
+        cornerRadius = CornerRadius(size * 0.12f, size * 0.12f),
+    )
+    drawRect(
+        color = band,
+        topLeft = Offset(centre.x - half, centre.y - half + size * 0.28f),
+        size = Size(size, size * 0.16f),
+    )
 }
 
 /**

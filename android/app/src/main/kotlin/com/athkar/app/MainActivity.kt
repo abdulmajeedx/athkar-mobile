@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,8 +27,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.util.Consumer
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -44,8 +48,8 @@ import com.athkar.feature.tasbih.TasbihRoute
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
- * Single-activity Compose host: routes between the three top-level destinations — adhkar, prayer
- * times and qibla.
+ * Single-activity Compose host: routes between the five top-level destinations — adhkar, the
+ * tasbih, prayer times, the qibla and the settings.
  *
  * There is deliberately no FLAG_SECURE. It was here to hide the task snapshot of a locked session,
  * but the lock screen was never built, so the flag was added on the first onPause and — with
@@ -61,7 +65,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            AthkarTheme {
+            // The palette is a stored preference and the hour is computed from the user's own
+            // prayer times, so both are read here, above everything, rather than by each screen.
+            val appearance: AppearanceViewModel = hiltViewModel()
+            val chrome by appearance.chrome.collectAsStateWithLifecycle()
+
+            AthkarTheme(theme = chrome.theme, sky = chrome.sky) {
                 AthkarApp()
             }
         }
@@ -69,7 +78,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * The three tabs are peers, not a stack: none of them is "inside" another.
+ * The tabs are peers, not a stack: none of them is "inside" another.
  *
  * Each is addressable by a private `athkar://` URI so something outside the UI — a prayer alert, at
  * four in the morning, on a cold process — can open the tab it is talking about instead of dropping
@@ -90,6 +99,7 @@ private enum class Destination(
     TASBIH("tasbih", "المسبحة", Icons.Default.RadioButtonChecked, "athkar://tasbih"),
     PRAYER("prayer", "الصلاة", Icons.Default.Schedule, "athkar://prayer"),
     QIBLA("qibla", "القبلة", Icons.Default.Explore, "athkar://qibla"),
+    SETTINGS("settings", "الإعدادات", Icons.Default.Tune, "athkar://settings"),
 }
 
 @Composable
@@ -146,7 +156,16 @@ private fun AthkarApp() {
                             }
                         },
                         icon = { Icon(destination.icon, contentDescription = null) },
-                        label = { Text(destination.label) },
+                        // Five tabs share the bar, so a label that wraps would push the row taller
+                        // than the icons above it. One line, ellipsised, at the bar's own size.
+                        label = {
+                            Text(
+                                destination.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -175,6 +194,7 @@ private fun AthkarApp() {
                         Destination.TASBIH -> TasbihRoute()
                         Destination.PRAYER -> PrayerTimesRoute()
                         Destination.QIBLA -> QiblaRoute()
+                        Destination.SETTINGS -> SettingsRoute()
                     }
                 }
             }

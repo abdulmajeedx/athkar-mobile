@@ -45,9 +45,33 @@ class CompassSource @Inject constructor(
         val fieldStrengthMicroTesla: Float? = null,
         /** What the geomagnetic model says the field should be here, in microtesla. */
         val expectedFieldStrengthMicroTesla: Float? = null,
-        /** Degrees the device is tilted from flat; a steep tilt degrades the heading. */
-        val tiltDegrees: Float = 0f,
+        /**
+         * Degrees the top edge of the screen is tipped down from flat, negative when tipped up.
+         *
+         * Reported alongside [rollDegrees] rather than only as the combined [tiltDegrees] so the
+         * screen can show *which way* the phone is leaning. "Hold it flat" tells someone their
+         * reading is being spoiled without telling them what to do with their hand.
+         */
+        val pitchDegrees: Float = 0f,
+        /** Degrees the right edge is tipped down from flat, negative when tipped up. */
+        val rollDegrees: Float = 0f,
     ) {
+        /** How far from flat, in any direction; a steep tilt degrades the heading. */
+        val tiltDegrees: Float
+            get() = kotlin.math.sqrt(
+                pitchDegrees * pitchDegrees + rollDegrees * rollDegrees,
+            )
+
+        /**
+         * True when the phone is flat enough for the heading to be worth trusting.
+         *
+         * Stricter than [isTooTilted], and deliberately: that one is the point past which the
+         * reading is *wrong*, this is the point within which it is *right*. Most people hold a
+         * phone at a reading angle without ever being told that a compass needs it level, so the
+         * qibla is only confirmed inside this band.
+         */
+        val isLevel: Boolean get() = tiltDegrees <= LEVEL_TOLERANCE_DEGREES
+
         /**
          * True when the measured field is far enough from the model's value that something ferrous
          * or magnetic is nearby.
@@ -175,9 +199,10 @@ class CompassSource @Inject constructor(
                             hasHeading = true
                         }
 
+                        // From the remapped matrix, so these are the screen's own axes however the
+                        // device is turned — which is what a level drawn on that screen needs.
                         val pitch = Math.toDegrees(orientation[1].toDouble())
                         val roll = Math.toDegrees(orientation[2].toDouble())
-                        val tilt = kotlin.math.sqrt(pitch * pitch + roll * roll)
 
                         val smoothed = Math.toDegrees(kotlin.math.atan2(smoothedY, smoothedX))
                         trySend(
@@ -186,7 +211,8 @@ class CompassSource @Inject constructor(
                                 accuracy = lastAccuracy,
                                 fieldStrengthMicroTesla = measuredStrength,
                                 expectedFieldStrengthMicroTesla = expectedStrength,
-                                tiltDegrees = tilt.toFloat(),
+                                pitchDegrees = pitch.toFloat(),
+                                rollDegrees = roll.toFloat(),
                             )
                         )
                     }
@@ -212,5 +238,15 @@ class CompassSource @Inject constructor(
 
         /** Beyond this tilt the horizontal projection the heading rests on stops being dependable. */
         const val MAX_USABLE_TILT_DEGREES = 35f
+
+        /**
+         * Within this much of flat the heading is as good as the sensor can give.
+         *
+         * Ten degrees rather than two: it has to be a band a hand can hold at arm's length, not a
+         * knife edge that flickers in and out while someone stands as still as a person can. Past
+         * it the projection error starts to show; inside it, the remaining error is smaller than
+         * the four degrees the qibla itself is called aligned within.
+         */
+        const val LEVEL_TOLERANCE_DEGREES = 10f
     }
 }

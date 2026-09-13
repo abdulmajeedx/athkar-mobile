@@ -10,8 +10,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 
@@ -103,23 +105,57 @@ private val DarkColors = darkColorScheme(
 )
 
 /**
+ * How every style in the app is set, before size and weight.
+ *
+ * Three things here are specifically about Arabic, and all three are wrong by default:
+ *
+ * - **No tracking.** Material's scale spaces letters apart by a fraction of a point, which is right
+ *   for Latin and damaging for a joined script — it stretches the connections between letters of the
+ *   same word and makes the word look broken apart.
+ * - **No font padding.** The framework reserves vertical room from the font's own ascent and
+ *   descent, computed for Latin. Combined with the tall leading here it pushed each line down inside
+ *   its own box, so the gaps between lines came out uneven.
+ * - **Centred leading, untrimmed.** Tashkeel sits above and below the baseline, so the extra room a
+ *   line is given has to go to *both* ends. Left to the default, the first and last lines had theirs
+ *   trimmed away and their marks clipped by the edge of the text box.
+ */
+private val ArabicText = PlatformTextStyle(includeFontPadding = false)
+private val ArabicLeading = LineHeightStyle(
+    alignment = LineHeightStyle.Alignment.Center,
+    trim = LineHeightStyle.Trim.None,
+)
+
+private fun arabic(
+    size: Int,
+    leading: Int,
+    weight: FontWeight = FontWeight.Normal,
+) = TextStyle(
+    fontSize = size.sp,
+    lineHeight = leading.sp,
+    fontWeight = weight,
+    letterSpacing = 0.sp,
+    platformStyle = ArabicText,
+    lineHeightStyle = ArabicLeading,
+)
+
+/**
  * Arabic with full tashkeel needs far more vertical room than Latin text: marks sit above and below
  * the baseline, and at Material's default line heights they collide between lines. Every style here
  * is therefore leaded well beyond the usual 1.2-1.4x.
  */
 private val AthkarTypography = Typography(
-    displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold),
-    headlineMedium = TextStyle(fontSize = 26.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
-    headlineSmall = TextStyle(fontSize = 22.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 17.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontSize = 15.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium),
-    bodyLarge = TextStyle(fontSize = 19.sp, lineHeight = 38.sp),
-    bodyMedium = TextStyle(fontSize = 16.sp, lineHeight = 30.sp),
-    bodySmall = TextStyle(fontSize = 14.sp, lineHeight = 24.sp),
-    labelLarge = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium),
-    labelMedium = TextStyle(fontSize = 13.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
-    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium),
+    displaySmall = arabic(34, 48, FontWeight.Bold),
+    headlineMedium = arabic(26, 40, FontWeight.Bold),
+    headlineSmall = arabic(22, 36, FontWeight.SemiBold),
+    titleLarge = arabic(20, 34, FontWeight.SemiBold),
+    titleMedium = arabic(17, 30, FontWeight.SemiBold),
+    titleSmall = arabic(15, 26, FontWeight.Medium),
+    bodyLarge = arabic(19, 38),
+    bodyMedium = arabic(16, 32),
+    bodySmall = arabic(14, 26),
+    labelLarge = arabic(15, 24, FontWeight.Medium),
+    labelMedium = arabic(13, 22, FontWeight.Medium),
+    labelSmall = arabic(12, 20, FontWeight.Medium),
 )
 
 /** Accents that Material's scheme has no slot for, but that the screens need consistently. */
@@ -150,19 +186,42 @@ private val DarkAccents = AthkarAccents(
 val LocalAthkarAccents = staticCompositionLocalOf { LightAccents }
 
 /**
+ * The hour of the sky the app is currently painted in.
+ *
+ * Provided once at the root and read by every patterned surface, so the header of the adhkar, the
+ * face of the compass and the ground of the tasbih are all the same hour — and all of them move
+ * together at Maghrib. Each screen naming its own was how they came to be stuck at night while the
+ * prayer screen alone knew it was noon.
+ */
+val LocalSkyPhase = staticCompositionLocalOf { SkyPhase.NIGHT }
+
+/**
  * Wraps content in the app's colours, type scale and layout direction.
  *
  * The direction is pinned to RTL rather than inherited: the content is Arabic on every screen, so a
  * device set to English would otherwise mirror the layout away from the text it is laying out.
+ *
+ * @param sky the hour to paint the patterned surfaces in — and, under [AppTheme.BY_TIME], what
+ *   decides whether the page behind them is light or dark.
  */
 @Composable
 fun AthkarTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    theme: AppTheme = AppTheme.DEFAULT,
+    sky: SkyPhase = SkyPhase.NIGHT,
     content: @Composable () -> Unit,
 ) {
+    val systemDark = isSystemInDarkTheme()
+    val darkTheme = when (theme) {
+        AppTheme.BY_TIME -> sky.isNight
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+        AppTheme.SYSTEM -> systemDark
+    }
+
     CompositionLocalProvider(
         LocalLayoutDirection provides LayoutDirection.Rtl,
         LocalAthkarAccents provides if (darkTheme) DarkAccents else LightAccents,
+        LocalSkyPhase provides sky,
     ) {
         MaterialTheme(
             colorScheme = if (darkTheme) DarkColors else LightColors,

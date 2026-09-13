@@ -49,11 +49,15 @@ HEADLINES = {
     ),
     "qibla": (
         "اتجاه القبلة",
-        "بوصلة تقول أي جهة تدير الجهاز وكم درجة",
+        "بوصلة بميزان استواء تقول أي جهة تدير الجهاز وكم درجة",
+    ),
+    "tasbih": (
+        "مسبحة إلكترونية",
+        "اضغط في أي مكان، والعدّ محفوظ ولو أغلقت التطبيق",
     ),
 }
 
-ORDER = ["adhkar", "prayer", "qibla"]
+ORDER = ["adhkar", "prayer", "qibla", "tasbih"]
 
 
 def load_font(size: int, bold: bool) -> ImageFont.FreeTypeFont:

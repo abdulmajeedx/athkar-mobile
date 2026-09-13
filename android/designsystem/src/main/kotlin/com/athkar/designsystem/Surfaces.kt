@@ -1,10 +1,13 @@
 package com.athkar.designsystem
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -23,16 +26,25 @@ import androidx.compose.ui.res.painterResource
  */
 @Composable
 fun PatternedSurface(
-    sky: SkyPhase,
     modifier: Modifier = Modifier,
+    sky: SkyPhase = LocalSkyPhase.current,
     shape: Shape? = null,
     patternAlpha: Float = 0.10f,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    // Crossfaded, not cut: the sky changes while someone is looking at the screen — the app is open
+    // *because* a prayer is about to come in — and a gradient that swaps between frames reads as a
+    // glitch where the same change over a second reads as the hour turning.
+    val top by animateColorAsState(sky.top, SKY_CHANGE, label = "sky-top")
+    val bottom by animateColorAsState(sky.bottom, SKY_CHANGE, label = "sky-bottom")
+    val pattern by animateColorAsState(
+        sky.accent.copy(alpha = patternAlpha), SKY_CHANGE, label = "sky-pattern",
+    )
+
     val shaped = if (shape != null) modifier.clip(shape) else modifier
     Box(
         modifier = shaped.background(
-            Brush.verticalGradient(listOf(sky.top, sky.bottom)),
+            Brush.verticalGradient(listOf(top, bottom)),
         ),
     ) {
         Image(
@@ -41,7 +53,7 @@ fun PatternedSurface(
             // Cropping rather than fitting keeps the tile at its drawn scale, so the stars stay the
             // same size whatever the surface they cover.
             contentScale = ContentScale.Crop,
-            colorFilter = ColorFilter.tint(sky.accent.copy(alpha = patternAlpha)),
+            colorFilter = ColorFilter.tint(pattern),
             // matchParentSize, not fillMaxSize: fillMaxSize takes the largest height the parent
             // offers and *participates in measuring it*, so the surface grew to the full screen and
             // pushed everything below it out of view. matchParentSize takes the size the other
@@ -52,6 +64,10 @@ fun PatternedSurface(
     }
 }
 
+/** Long enough to read as the light changing rather than as a repaint. */
+private val SKY_CHANGE = tween<Color>(durationMillis = 900)
+
 /** A hairline of the sky's accent — used to mark the one row on a screen that matters. */
 @Composable
-fun accentEdge(sky: SkyPhase, alpha: Float = 0.55f): Color = sky.accent.copy(alpha = alpha)
+fun accentEdge(sky: SkyPhase = LocalSkyPhase.current, alpha: Float = 0.55f): Color =
+    sky.accent.copy(alpha = alpha)

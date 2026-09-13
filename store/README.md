@@ -36,8 +36,11 @@ python3 scripts/generate_store_assets.py
 
 ## اللقطات
 
-`store/screenshots/` — ثلاث لقطات 1080×1920، تُرفع في Main store listing ← Phone screenshots.
+`store/screenshots/` — أربع لقطات 1080×1920، تُرفع في Main store listing ← Phone screenshots.
 وPlay يشترط اثنتين على الأقل.
+
+الترتيب في `ORDER` أعلى السكربت: الأذكار، ثم الصلاة، ثم القبلة، ثم المسبحة — والسكربت يأخذ
+الالتقاطات بالترتيب الأبجدي لأسمائها، فرتّب ملفات `/tmp/caps` بما يطابقه قبل تشغيله.
 
 تُبنى على خطوتين:
 

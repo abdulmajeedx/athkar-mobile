@@ -62,7 +62,6 @@ import com.athkar.designsystem.LocalAthkarAccents
 import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.ReadingSize
 import com.athkar.designsystem.Sizing
-import com.athkar.designsystem.SkyPhase
 import com.athkar.designsystem.Spacing
 import com.athkar.feature.athkar.AthkarViewModel.Intent
 import com.athkar.feature.athkar.AthkarViewModel.UiState
@@ -104,10 +103,10 @@ private fun AthkarScreen(state: UiState, onIntent: (Intent) -> Unit) {
 @Composable
 private fun ChapterIndex(state: UiState, onIntent: (Intent) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        // The same patterned sky as the prayer screen, so opening a chapter does not feel like
-        // arriving in a different app.
+        // The same patterned sky as the prayer screen, and the same hour: it follows the time of
+        // day with the rest of the app, so opening a chapter does not feel like arriving in a
+        // different one.
         PatternedSurface(
-            sky = SkyPhase.NIGHT,
             // Stronger than the default: on a header this dark the geometry disappears entirely at
             // ten percent, and an invisible pattern is just a dark rectangle.
             patternAlpha = 0.16f,

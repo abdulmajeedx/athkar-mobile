@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.athkar.core.domain.AdhkarReminder
 import com.athkar.designsystem.ReadingSize
 import com.athkar.domain.AdhkarRepository
-import com.athkar.domain.ReadingPreferencesRepository
+import com.athkar.domain.AppearancePreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +38,7 @@ data class Chapter(
 @HiltViewModel
 class AthkarViewModel @Inject constructor(
     private val adhkarRepository: AdhkarRepository,
-    private val readingPreferences: ReadingPreferencesRepository,
+    private val appearancePreferences: AppearancePreferencesRepository,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -133,9 +133,8 @@ class AthkarViewModel @Inject constructor(
         // The reading size is a preference, not sitting state: it was the one setting in the app
         // that a restart threw away, sending the reader back to the type menu every time.
         viewModelScope.launch {
-            readingPreferences.observeReadingSizeName().collect { stored ->
-                readingSize.value = ReadingSize.entries.firstOrNull { it.name == stored }
-                    ?: ReadingSize.MEDIUM
+            appearancePreferences.observeReadingSizeName().collect { stored ->
+                readingSize.value = ReadingSize.fromName(stored)
             }
         }
     }
@@ -150,7 +149,7 @@ class AthkarViewModel @Inject constructor(
             is Intent.ResetCount -> resetCount(intent.id)
             is Intent.TogglePinned -> viewModelScope.launch { togglePinned(intent.id) }
             is Intent.SetReadingSize -> viewModelScope.launch {
-                readingPreferences.setReadingSizeName(intent.size.name)
+                appearancePreferences.setReadingSizeName(intent.size.name)
             }
         }
     }

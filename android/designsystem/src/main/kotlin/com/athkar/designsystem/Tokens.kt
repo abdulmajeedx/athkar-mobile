@@ -59,4 +59,12 @@ enum class ReadingSize(val label: String, val fontSp: Int, val lineHeightSp: Int
     MEDIUM("متوسط", 20, 42),
     LARGE("كبير", 24, 50),
     HUGE("كبير جدًا", 28, 58),
+    ;
+
+    companion object {
+        val DEFAULT = MEDIUM
+
+        /** A size written by a later version of the app reads as absent rather than as a crash. */
+        fun fromName(name: String?): ReadingSize = entries.firstOrNull { it.name == name } ?: DEFAULT
+    }
 }
