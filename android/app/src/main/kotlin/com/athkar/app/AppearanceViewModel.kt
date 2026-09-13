@@ -68,7 +68,14 @@ class AppearanceViewModel @Inject constructor(
     }
         // Without this the whole tree recomposes every minute to be told the sky has not moved.
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), Chrome())
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            // The first frame, before the stored settings have been read back. Taken from the clock
+            // rather than left at a fixed night: a cold launch at noon would otherwise paint one
+            // dark frame and then flip to the light page a moment later, on every single launch.
+            Chrome(sky = SkyPhase.forHour(Instant.now().atZone(ZoneId.systemDefault()).hour)),
+        )
 
     fun setTheme(theme: AppTheme) {
         viewModelScope.launch { appearance.setThemeName(theme.name) }
