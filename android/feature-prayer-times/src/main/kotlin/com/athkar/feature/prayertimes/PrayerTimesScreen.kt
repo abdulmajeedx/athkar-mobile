@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.athkar.core.prayer.CalculationMethod
+import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
 import com.athkar.designsystem.LocalAthkarAccents
@@ -105,6 +106,7 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
         onSelectAlertSound = viewModel::selectAlertSound,
         onPreviewAlertSound = viewModel::previewAlertSound,
         onStopAlertSoundPreview = viewModel::stopAlertSoundPreview,
+        onSelectHighLatitudeRule = viewModel::selectHighLatitudeRule,
         onSetPreAdhanMinutes = viewModel::setPreAdhanMinutes,
         onSetIqamaMinutes = viewModel::setIqamaMinutes,
         onDismissError = viewModel::dismissLocationError,
@@ -127,6 +129,7 @@ private fun PrayerTimesScreen(
     onSelectAlertSound: (AlertSound) -> Unit,
     onPreviewAlertSound: (AlertSound) -> Unit,
     onStopAlertSoundPreview: () -> Unit,
+    onSelectHighLatitudeRule: (HighLatitudeRule?) -> Unit,
     onSetPreAdhanMinutes: (Int) -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
     onDismissError: () -> Unit,
@@ -153,6 +156,7 @@ private fun PrayerTimesScreen(
                     onSelectAlertSound = onSelectAlertSound,
                     onPreviewAlertSound = onPreviewAlertSound,
                     onStopAlertSoundPreview = onStopAlertSoundPreview,
+                    onSelectHighLatitudeRule = onSelectHighLatitudeRule,
                     onSetPreAdhanMinutes = onSetPreAdhanMinutes,
                     onSetIqamaMinutes = onSetIqamaMinutes,
                 )

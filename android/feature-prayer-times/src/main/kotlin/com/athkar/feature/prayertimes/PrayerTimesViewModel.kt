@@ -3,6 +3,7 @@ package com.athkar.feature.prayertimes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.athkar.core.prayer.CalculationMethod
+import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.PolarDayException
 import com.athkar.core.prayer.Prayer
@@ -65,6 +66,7 @@ class PrayerTimesViewModel @Inject constructor(
         val notifiedPrayers: Set<Prayer> = emptySet(),
         val alertSound: AlertSound = AlertSound.DEFAULT,
         val preAdhanMinutes: Int = 0,
+        val highLatitudeRule: HighLatitudeRule? = null,
         val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
         /**
          * Tomorrow's dawn, so the hours after Isha have something to count down to.
@@ -138,6 +140,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 preAdhanMinutes = preferences.preAdhanMinutes,
+                highLatitudeRule = preferences.highLatitudeRule,
                 hijriDate = Formatting.hijriDate(date),
                 gregorianDate = Formatting.gregorianDate(date),
             )
@@ -160,6 +163,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 preAdhanMinutes = preferences.preAdhanMinutes,
+                highLatitudeRule = preferences.highLatitudeRule,
                 iqamaMinutes = preferences.iqamaMinutes,
                 // A polar day tomorrow is not a reason to fail today, so this is computed
                 // separately and simply absent when it cannot be had.
@@ -183,6 +187,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 preAdhanMinutes = preferences.preAdhanMinutes,
+                highLatitudeRule = preferences.highLatitudeRule,
                 error = "الشمس لا تشرق ولا تغرب في هذا الموقع اليوم، فلا يمكن حساب المواقيت. " +
                     "اختر أقرب مدينة تحتها بخط عرض أدنى.",
             )
@@ -291,6 +296,11 @@ class PrayerTimesViewModel @Inject constructor(
             val updated = if (prayer in current) current - prayer else current + prayer
             preferencesRepository.setNotifiedPrayers(updated)
         }
+    }
+
+    /** Null restores the rule recommended for the user's latitude. */
+    fun selectHighLatitudeRule(rule: HighLatitudeRule?) {
+        viewModelScope.launch { preferencesRepository.setHighLatitudeRule(rule) }
     }
 
     fun setPreAdhanMinutes(minutes: Int) {

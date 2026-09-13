@@ -17,15 +17,15 @@ enum class Madhab(val shadowLength: Int) {
  * How to place Fajr and Isha where the sun never descends far enough below the horizon for the
  * defining twilight angle to occur — the "abnormal period" of high latitudes.
  */
-enum class HighLatitudeRule {
+enum class HighLatitudeRule(val arabicName: String, val arabicDescription: String) {
     /** Night is split in half; Fajr and Isha may not be closer to midnight than that. */
-    MIDDLE_OF_THE_NIGHT,
+    MIDDLE_OF_THE_NIGHT("منتصف الليل", "يُقسم الليل نصفين، ولا يقترب الفجر ولا العشاء من منتصفه"),
 
     /** Fajr no earlier than 1/7 of the night before sunrise, Isha no later than 1/7 after sunset. */
-    SEVENTH_OF_THE_NIGHT,
+    SEVENTH_OF_THE_NIGHT("سُبع الليل", "الفجر قبل الشروق بسُبع الليل على الأكثر، والعشاء بعد الغروب بمثله"),
 
     /** The night fraction is derived from the method's own twilight angle. Recommended default. */
-    TWILIGHT_ANGLE,
+    TWILIGHT_ANGLE("زاوية الشفق", "تُشتقّ النسبة من زاوية الشفق في طريقة الحساب — الأقرب إلى الرصد"),
 
     ;
 

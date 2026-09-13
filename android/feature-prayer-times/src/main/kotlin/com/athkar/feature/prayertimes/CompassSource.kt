@@ -6,6 +6,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
+import android.view.Surface
+import android.view.WindowManager
 import com.athkar.core.prayer.Coordinates
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -73,6 +76,28 @@ class CompassSource @Inject constructor(
     fun isAvailable(): Boolean =
         sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) != null
 
+    /**
+     * The axis pair that turns device coordinates into screen coordinates.
+     *
+     * Read on every reading rather than once: the screen can rotate while the compass is open, and
+     * a value captured at subscription time would be stale from that moment on.
+     */
+    private fun displayAxes(): Pair<Int, Int> {
+        val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display?.rotation
+        } else {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.rotation
+        } ?: Surface.ROTATION_0
+
+        return when (rotation) {
+            Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
+            Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
+            Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
+            else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
+        }
+    }
+
     fun headings(at: Coordinates): Flow<Heading> = callbackFlow {
         val manager = sensorManager
         val rotation = manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -93,6 +118,7 @@ class CompassSource @Inject constructor(
         val expectedStrength = field.fieldStrength / 1000f
 
         val rotationMatrix = FloatArray(9)
+        val remappedMatrix = FloatArray(9)
         val orientation = FloatArray(3)
 
         val listener = object : SensorEventListener {
@@ -111,7 +137,15 @@ class CompassSource @Inject constructor(
 
                     Sensor.TYPE_ROTATION_VECTOR -> {
                         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                        SensorManager.getOrientation(rotationMatrix, orientation)
+                        // Remapped for however the screen is turned. getOrientation reads the
+                        // device's natural orientation, which on a phone held sideways is ninety
+                        // degrees from where the user is looking — the needle pointed confidently
+                        // at the wrong wall, and nothing on screen suggested anything was wrong.
+                        val (axisX, axisY) = displayAxes()
+                        SensorManager.remapCoordinateSystem(
+                            rotationMatrix, axisX, axisY, remappedMatrix,
+                        )
+                        SensorManager.getOrientation(remappedMatrix, orientation)
 
                         val magneticHeading = Math.toDegrees(orientation[0].toDouble())
                         val trueHeading = magneticHeading + declination

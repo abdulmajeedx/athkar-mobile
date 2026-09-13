@@ -64,13 +64,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.athkar.core.prayer.CalculationMethod
+import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
 import com.athkar.domain.AlertSound
+import kotlin.math.abs
 import com.athkar.domain.PrayerPreferences
 import com.athkar.feature.prayertimes.PrayerTimesViewModel.UiState
+
+/** Above this latitude the high-latitude rules diverge enough to be worth choosing between. */
+private const val HIGH_LATITUDE_THRESHOLD = 48.0
 
 /**
  * Everything about how the times are computed and announced, on a screen of its own.
@@ -93,6 +98,7 @@ internal fun PrayerSettingsScreen(
     onSelectAlertSound: (AlertSound) -> Unit,
     onPreviewAlertSound: (AlertSound) -> Unit,
     onStopAlertSoundPreview: () -> Unit,
+    onSelectHighLatitudeRule: (HighLatitudeRule?) -> Unit,
     onSetPreAdhanMinutes: (Int) -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
 ) {
@@ -135,6 +141,17 @@ internal fun PrayerSettingsScreen(
                 iqamaMinutes = state.iqamaMinutes,
                 onSet = onSetIqamaMinutes,
             )
+            state.place?.let { place ->
+                // Below 48 degrees the rules are indistinguishable, and a control nobody needs is
+                // one more thing to read past.
+                if (abs(place.coordinates.latitude) > HIGH_LATITUDE_THRESHOLD) {
+                    HighLatitudeSettings(
+                        selected = state.highLatitudeRule,
+                        recommended = HighLatitudeRule.recommendedFor(place.coordinates),
+                        onSelect = onSelectHighLatitudeRule,
+                    )
+                }
+            }
             SettingsRow(
                 method = state.method,
                 madhab = state.madhab,
@@ -487,6 +504,57 @@ private fun openExactAlarmSettings(context: Context) {
  * A row of choices rather than a stepper: the useful values are few and well known, and "off" has
  * to be one tap away — this is the setting a user turns off at the first alert they did not want.
  */
+/**
+ * The rule that decides Fajr and Isha where the sun never dips far enough below the horizon.
+ *
+ * Shown only above 48°, because below it the three rules differ by a minute or two and the choice
+ * is noise. Above it they diverge by tens of minutes, and the app was picking for the user with no
+ * way to disagree — for someone in Stockholm that is the setting that decides whether the times
+ * are usable at all.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HighLatitudeSettings(
+    selected: HighLatitudeRule?,
+    recommended: HighLatitudeRule,
+    onSelect: (HighLatitudeRule?) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        SectionLabel("خطوط العرض العليا")
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(Spacing.lg)) {
+                Text(
+                    (selected ?: recommended).arabicDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(Spacing.md))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    MadhabChip("تلقائي", selected == null) { onSelect(null) }
+                    HighLatitudeRule.entries.forEach { rule ->
+                        MadhabChip(rule.arabicName, rule == selected) { onSelect(rule) }
+                    }
+                }
+                if (selected == null) {
+                    Spacer(Modifier.height(Spacing.sm))
+                    Text(
+                        "المختار تلقائيًّا لموقعك: ${recommended.arabicName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PreAdhanSettings(minutes: Int, onSet: (Int) -> Unit) {
