@@ -64,8 +64,11 @@ final class AdhkarLibraryTests: XCTestCase {
 
     func testBundledCorpusLoads() {
         let library = AdhkarLibrary.shared
-        XCTAssertEqual(library.chapters.count, 132)
-        XCTAssertEqual(library.chapters.reduce(0) { $0 + $1.items.count }, 267)
+        // The same counts the Android suite asserts, against the same file. They moved when the
+        // combined morning/evening chapter was split in two, and the iOS bundle kept the old copy
+        // for three weeks without anything noticing — hence the byte-for-byte check in CI.
+        XCTAssertEqual(library.chapters.count, 133)
+        XCTAssertEqual(library.chapters.reduce(0) { $0 + $1.items.count }, 287)
         XCTAssertFalse(library.chapters.contains { $0.title.isEmpty })
         XCTAssertFalse(library.chapters.flatMap(\.items).contains { $0.text.isEmpty })
     }

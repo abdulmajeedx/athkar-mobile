@@ -46,7 +46,7 @@ xcodebuild test -scheme Athkar -destination 'platform=iOS Simulator,name=iPhone 
 `PrayerTimesTests` checks the published timings for Raleigh, madhab ordering, the Umm al-Qura
 interval, strict ordering across 366 consecutive days, high-latitude clamping and the polar-day
 error. `QiblaTests` checks published great-circle bearings for eleven cities across both
-hemispheres. `AdhkarLibraryTests` checks that all 132 chapters and 267 readings actually reach the
+hemispheres. `AdhkarLibraryTests` checks that all 133 chapters and 287 readings actually reach the
 app bundle.
 
 ## Layout

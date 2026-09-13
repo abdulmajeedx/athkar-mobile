@@ -91,6 +91,19 @@ jobs:
           [ -f "$ICON" ] || { echo "::error::$ICON is missing — App Store Connect rejects the upload"; exit 1; }
           sips -g pixelWidth -g pixelHeight "$ICON"
 
+          # The corpus is one text in two bundles, and it drifted: the combined morning/evening
+          # chapter was split in two on the Android side and the iOS copy kept the old file for
+          # weeks, so the most-opened chapter in the app was a different chapter on each phone.
+          # Nothing caught it, because both copies were internally valid.
+          IOS_SEED=Athkar/Resources/athkar_seed.json
+          ANDROID_SEED=../android/data/src/main/assets/athkar_seed.json
+          if ! cmp -s "$IOS_SEED" "$ANDROID_SEED"; then
+            echo "::error::The iOS and Android corpora differ — copy the Android asset over, since that is the one scripts/split_adhkar_times.py writes"
+            shasum -a 256 "$IOS_SEED" "$ANDROID_SEED"
+            exit 1
+          fi
+          echo "corpus: identical on both platforms"
+
       - name: Build and test
         working-directory: ios
         run: |
