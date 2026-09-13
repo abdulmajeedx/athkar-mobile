@@ -112,6 +112,18 @@ if tap_label "الصلاة"; then
         sleep 5
         shot 02-qibla
         echo "02-qibla القبلة" >> "$OUT/index.txt"
+        # The tasbih is counted on, so it is photographed with something on the counter rather
+        # than at zero — a screenshot of a fresh counter is a screenshot of nothing happening.
+        if tap_label "المسبحة"; then
+            sleep 4
+            for _ in 1 2 3 4 5 6 7; do adb shell input tap 540 900; sleep 1; done
+            shot 03-tasbih
+            echo "03-tasbih المسبحة" >> "$OUT/index.txt"
+        fi
+        tap_label "الإعدادات" || true
+        sleep 3
+        shot 04-settings
+        echo "04-settings الإعدادات" >> "$OUT/index.txt"
     fi
 fi
 
