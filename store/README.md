@@ -36,8 +36,23 @@ python3 scripts/generate_store_assets.py
 
 ## اللقطات
 
-لقطات الشاشة ليست هنا؛ يولّدها `.github/workflows/store-screenshots.yml` بتشغيل التطبيق على محاكي
-وتصويره. وPlay يشترط **لقطتَي هاتف على الأقل** قبل نشر الصفحة.
+`store/screenshots/` — ثلاث لقطات 1080×1920، تُرفع في Main store listing ← Phone screenshots.
+وPlay يشترط اثنتين على الأقل.
+
+تُبنى على خطوتين:
+
+```bash
+gh workflow run store-screenshots.yml --repo abdulmajeedx/athkar-mobile   # يصوّر على محاكي
+gh run download <id> -n store-screenshots -D /tmp/caps                    # ينزّل الالتقاطات
+python3 scripts/compose_store_screenshots.py /tmp/caps/store-screenshots
+```
+
+**الالتقاطات صور حقيقية للتطبيق وهو يعمل**، والسكربت يضعها في إطار هاتف تحت عنوان. لا يرسم شاشة
+ولا يخترع عنصرًا ولا يكتب نصًّا لا يعرضه التطبيق نفسه — والفرق ليس تجميليًّا: بلاي يمنع عرض مزايا
+لا يملكها التطبيق، والرسوم التخيّلية تنفصل عن المنتج عند أول تغيير في أيّهما.
+
+العناوين مكتوبة في `HEADLINES` أعلى السكربت، ومعها ثلاث عبارات رُفضت وسببُ رفضها — «بصوت وترجمة»
+و«أصوات مؤذنين متعددة» و«معايرة تلقائية بالمستشعرات» — كي لا تُعاد.
 
 ## ما يبقى على الإنسان
 
