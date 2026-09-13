@@ -258,13 +258,22 @@ jobs:
           # Without this the stack traces in Play's crash reports stay obfuscated by R8, and a
           # crash report nobody can read is a crash report nobody fixes.
           mappingFile: ${{ steps.artifact.outputs.mapping }}
-          # The closed-testing track this app actually uses. Override per run with the workflow
-          # input if a build is ever meant for a different one.
+          # The numeric id of the closed-testing track, not a standard name: this app's track is a
+          # custom one ("مختبرو أذكاري"), and uploading to the built-in `alpha` put two bundles on a
+          # track nobody tests from while the real one stayed on 1.2.4.
           track: ${{ vars.PLAY_TRACK || 'alpha' }}
           # Named, or Play labels the upload after whatever draft is already open on the track and
           # a 1.2.8 bundle sits inside a release still calling itself 1.2.7.
           releaseName: ${{ steps.version.outputs.name }}
-          status: draft
+          # `draft` was the careful-looking choice and did nothing useful: it left the bundle in the
+          # library, assigned to no track, with no draft release to publish — the console reported
+          # no pending changes at all. On a closed track `completed` is right, because its audience
+          # is a fixed list of people who opted in, and a partial rollout across a fixed list means
+          # nothing.
+          #
+          # PLAY_STATUS exists so that pointing PLAY_TRACK at `production` cannot quietly turn a tag
+          # push into a public release. Set it to `draft` before that day.
+          status: ${{ vars.PLAY_STATUS || 'completed' }}
 
       # Builds are published to a separate distribution repository so this one — the code, the
       # keys, the pipeline — stays private and uncluttered by binaries. It falls back to publishing
