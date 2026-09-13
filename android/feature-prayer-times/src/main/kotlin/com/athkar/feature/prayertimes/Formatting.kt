@@ -8,6 +8,8 @@ import java.time.chrono.HijrahChronology
 import java.time.chrono.HijrahDate
 import java.time.temporal.ChronoField
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Arabic date and time formatting done explicitly rather than through the platform locale, so the
@@ -94,4 +96,30 @@ object Formatting {
 
     /** A compass bearing to one decimal place. */
     fun bearing(degrees: Double): String = "%.1f°".format(Locale.ROOT, degrees)
+
+    /** A whole-degree angle, for readouts where a tenth of a degree is noise. */
+    fun degrees(value: Double): String = "%d°".format(Locale.ROOT, value.roundToInt())
+
+    /**
+     * A correction as a signed turn: `+7°`, `−23°`.
+     *
+     * The minus is the Arabic-mathematical U+2212, not a hyphen: at this size a hyphen beside a
+     * numeral reads as a dash in the sentence rather than as a sign on the number.
+     */
+    fun signedDegrees(value: Double): String {
+        val rounded = value.roundToInt()
+        val sign = if (rounded < 0) "−" else "+"
+        return "$sign${abs(rounded)}°"
+    }
+
+    /** How long ago, coarsely: `الآن`, `قبل 12 دقيقة`, `قبل ساعتين`. */
+    fun ago(duration: Duration): String {
+        val minutes = (duration.seconds.coerceAtLeast(0) / 60).toInt()
+        val hours = minutes / 60
+        return when {
+            minutes < 1 -> "الآن"
+            hours == 0 -> "قبل $minutes ${pluralMinutes(minutes)}"
+            else -> "قبل ${countNoun(hours, "ساعة", "ساعتين", "ساعات")}"
+        }
+    }
 }

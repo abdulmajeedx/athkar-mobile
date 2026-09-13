@@ -6,20 +6,29 @@ import androidx.lifecycle.viewModelScope
 import com.athkar.core.prayer.Qibla
 import com.athkar.core.prayer.QiblaBySun
 import com.athkar.core.prayer.QiblaSunAlignment
+import com.athkar.core.prayer.SolarPosition
+import com.athkar.domain.CompassCalibration
+import com.athkar.domain.CompassCalibrationRepository
 import com.athkar.domain.Place
 import com.athkar.domain.PrayerPreferencesRepository
+import com.athkar.domain.SightingMethod
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Drives the qibla screen: a fixed bearing derived from the stored place, and a live device heading
@@ -31,6 +40,7 @@ import kotlinx.coroutines.flow.stateIn
 class QiblaViewModel @Inject constructor(
     preferencesRepository: PrayerPreferencesRepository,
     private val compassSource: CompassSource,
+    private val calibrationRepository: CompassCalibrationRepository,
 ) : ViewModel() {
 
     data class UiState(
@@ -39,7 +49,7 @@ class QiblaViewModel @Inject constructor(
         /** Degrees clockwise from true north, or null until a place is known. */
         val qiblaBearing: Double? = null,
         val distanceKm: Double? = null,
-        /** Live device heading from true north, or null when there is no usable compass. */
+        /** Live device heading from true north, corrected when a sighting is in force. */
         val headingDegrees: Float? = null,
         val hasCompass: Boolean = true,
         val needsCalibration: Boolean = false,
@@ -54,58 +64,139 @@ class QiblaViewModel @Inject constructor(
         val rollDegrees: Float = 0f,
         /** Today's moments when the sun itself marks the qibla, which no magnet can disturb. */
         val sunAlignment: QiblaBySun? = null,
+        /** The correction in force, or null when the compass is running raw. */
+        val calibration: CompassCalibration? = null,
+        /** Where the sun is at this moment, for taking a sighting against. */
+        val sun: SolarPosition? = null,
         val needsPlace: Boolean = false,
-    )
+    ) {
+        /** True when the heading shown has been measured against the sun rather than assumed. */
+        val isCalibrated: Boolean get() = calibration != null
+
+        /** Whether a sighting can usefully be taken at this instant. */
+        val canSightSun: Boolean get() = sun != null && CompassCalibration.canSight(sun.altitude)
+    }
 
     private val places = preferencesRepository.observe().map { it.place }
 
+    /**
+     * The last *uncorrected* reading.
+     *
+     * Kept apart from the UI state deliberately: a sighting compares what the sensor said against
+     * where the sun truly is, so handing it a heading that already carries a previous correction
+     * would measure the compass against itself and stack one offset on top of the next.
+     */
+    private val rawHeading = MutableStateFlow<Float?>(null)
+
+    /** Ticks the sun's position; it moves about a degree every four minutes. */
+    private val solarTicker = flow {
+        while (true) {
+            emit(Instant.now())
+            delay(SUN_TICK_MILLIS)
+        }
+    }
+
     val uiState: StateFlow<UiState> = places
         .flatMapLatest { place ->
-            if (place == null) {
-                flowOf(UiState(isLoading = false, needsPlace = true))
-            } else {
-                val bearing = Qibla.direction(place.coordinates)
-                val distance = Qibla.distanceKm(place.coordinates)
-                val hasCompass = compassSource.isAvailable()
-                val base = UiState(
-                    isLoading = false,
-                    place = place,
-                    qiblaBearing = bearing,
-                    distanceKm = distance,
-                    hasCompass = hasCompass,
-                    // Computed once per place rather than per sensor reading: it depends on the
-                    // date and the coordinates, neither of which moves while the screen is open.
-                    sunAlignment = runCatching {
-                        QiblaSunAlignment.forDate(
-                            place.coordinates,
-                            java.time.LocalDate.now(java.time.ZoneId.systemDefault()),
-                            java.time.ZoneId.systemDefault(),
-                        )
-                    }.getOrNull(),
-                )
-                if (!hasCompass) {
-                    flowOf(base)
-                } else {
-                    compassSource.headings(place.coordinates)
-                        .map { heading ->
-                            base.copy(
-                                headingDegrees = heading.trueHeadingDegrees,
-                                needsCalibration =
-                                    heading.accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
-                                isFieldDisturbed = heading.isFieldDisturbed,
-                                isTooTilted = heading.isTooTilted,
-                                isLevel = heading.isLevel,
-                                pitchDegrees = heading.pitchDegrees,
-                                rollDegrees = heading.rollDegrees,
-                            )
-                        }
-                        .onStart { emit(base) }
-                }
-            }
+            if (place == null) flowOf(UiState(isLoading = false, needsPlace = true))
+            else readingsFor(place)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState())
 
+    private fun readingsFor(place: Place): Flow<UiState> {
+        val base = UiState(
+            isLoading = false,
+            place = place,
+            qiblaBearing = Qibla.direction(place.coordinates),
+            distanceKm = Qibla.distanceKm(place.coordinates),
+            hasCompass = compassSource.isAvailable(),
+            // Computed once per place rather than per sensor reading: it depends on the date and
+            // the coordinates, neither of which moves while the screen is open.
+            sunAlignment = runCatching {
+                QiblaSunAlignment.forDate(
+                    place.coordinates,
+                    java.time.LocalDate.now(java.time.ZoneId.systemDefault()),
+                    java.time.ZoneId.systemDefault(),
+                )
+            }.getOrNull(),
+        )
+
+        val corrections = calibrationRepository.observe().map { stored ->
+            // A correction that has expired, or that was taken somewhere else, is worse than none —
+            // it adds an error the raw reading did not have. Dropped here rather than where it is
+            // applied, so the screen shows the compass running raw and can say why.
+            stored?.takeUnless { it.isStale(Instant.now(), place.coordinates) }
+        }
+        val sun = solarTicker.map { SolarPosition.at(place.coordinates, it) }
+
+        if (!base.hasCompass) {
+            return combine(corrections, sun) { calibration, position ->
+                base.copy(calibration = calibration, sun = position)
+            }
+        }
+
+        return combine(
+            compassSource.headings(place.coordinates),
+            corrections,
+            sun,
+        ) { heading, calibration, position ->
+            rawHeading.value = heading.trueHeadingDegrees
+            base.copy(
+                headingDegrees = calibration?.correct(heading.trueHeadingDegrees)
+                    ?: heading.trueHeadingDegrees,
+                needsCalibration = heading.accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM,
+                isFieldDisturbed = heading.isFieldDisturbed,
+                isTooTilted = heading.isTooTilted,
+                isLevel = heading.isLevel,
+                pitchDegrees = heading.pitchDegrees,
+                rollDegrees = heading.rollDegrees,
+                calibration = calibration,
+                sun = position,
+            )
+        }.onStart { emit(base) }
+    }
+
+    /**
+     * Takes a sighting: the user is saying the phone points at the sun, or along the shadow, *now*.
+     *
+     * Everything hangs on that instant, so the sun's azimuth is recomputed here rather than read
+     * from the ticking state — the reference has to be the moment of the tap, not up to twenty
+     * seconds before it — and the heading used is the raw one for the same reason.
+     */
+    fun sight(method: SightingMethod) {
+        val state = uiState.value
+        val place = state.place ?: return
+        val raw = rawHeading.value ?: return
+        // A sighting taken while the phone leans measures the lean as well as the compass, and then
+        // applies that error to every later reading — the one way this feature could leave someone
+        // worse off than the bare magnetometer did.
+        if (!state.isLevel) return
+        val now = Instant.now()
+        val sun = SolarPosition.at(place.coordinates, now)
+        if (!CompassCalibration.canSight(sun.altitude)) return
+
+        viewModelScope.launch {
+            calibrationRepository.save(
+                CompassCalibration.fromSighting(
+                    method = method,
+                    sunAzimuth = sun.azimuth,
+                    rawHeading = raw,
+                    takenAt = now,
+                    at = place.coordinates,
+                ),
+            )
+        }
+    }
+
+    /** Drops the correction and returns the needle to the bare magnetometer. */
+    fun clearCalibration() {
+        viewModelScope.launch { calibrationRepository.clear() }
+    }
+
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
+
+        /** The sun moves a degree every four minutes; twenty seconds is far finer than needed. */
+        const val SUN_TICK_MILLIS = 20_000L
     }
 }

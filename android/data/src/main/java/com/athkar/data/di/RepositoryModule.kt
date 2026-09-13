@@ -2,6 +2,7 @@ package com.athkar.data.di
 
 import com.athkar.data.location.AndroidLocationSource
 import com.athkar.data.prefs.AppearancePreferencesRepositoryImpl
+import com.athkar.data.prefs.CompassCalibrationRepositoryImpl
 import com.athkar.data.prefs.PrayerPreferencesRepositoryImpl
 import com.athkar.data.prefs.TasbihRepositoryImpl
 import com.athkar.data.repository.AdhkarRepositoryImpl
@@ -9,6 +10,7 @@ import com.athkar.data.repository.SettingsRepositoryImpl
 import com.athkar.data.repository.SyncStateRepositoryImpl
 import com.athkar.domain.AdhkarRepository
 import com.athkar.domain.AppearancePreferencesRepository
+import com.athkar.domain.CompassCalibrationRepository
 import com.athkar.domain.Connectivity
 import com.athkar.domain.DeviceLocationSource
 import com.athkar.domain.PrayerPreferencesRepository
@@ -53,6 +55,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindTasbihRepository(impl: TasbihRepositoryImpl): TasbihRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCompassCalibrationRepository(
+        impl: CompassCalibrationRepositoryImpl,
+    ): CompassCalibrationRepository
 
     @Binds
     @Singleton

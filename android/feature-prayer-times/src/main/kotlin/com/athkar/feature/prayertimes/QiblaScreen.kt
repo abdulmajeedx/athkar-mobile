@@ -21,17 +21,24 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,6 +71,8 @@ import com.athkar.designsystem.LocalSkyPhase
 import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
+import com.athkar.domain.CompassCalibration
+import com.athkar.domain.SightingMethod
 import com.athkar.feature.prayertimes.QiblaViewModel.UiState
 import java.time.ZoneId
 import kotlin.math.abs
@@ -94,11 +103,19 @@ private const val LEVEL_FULL_SCALE_DEGREES = 20f
 @Composable
 fun QiblaRoute(viewModel: QiblaViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    QiblaScreen(state)
+    QiblaScreen(
+        state = state,
+        onSight = viewModel::sight,
+        onClearCalibration = viewModel::clearCalibration,
+    )
 }
 
 @Composable
-private fun QiblaScreen(state: UiState) {
+private fun QiblaScreen(
+    state: UiState,
+    onSight: (SightingMethod) -> Unit,
+    onClearCalibration: () -> Unit,
+) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
             state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -119,13 +136,21 @@ private fun QiblaScreen(state: UiState) {
                 )
             }
 
-            else -> QiblaContent(state)
+            else -> QiblaContent(
+                state = state,
+                onSight = onSight,
+                onClearCalibration = onClearCalibration,
+            )
         }
     }
 }
 
 @Composable
-private fun QiblaContent(state: UiState) {
+private fun QiblaContent(
+    state: UiState,
+    onSight: (SightingMethod) -> Unit,
+    onClearCalibration: () -> Unit,
+) {
     val qibla = state.qiblaBearing ?: return
     val heading = state.headingDegrees
 
@@ -289,10 +314,263 @@ private fun QiblaContent(state: UiState) {
             }
         }
 
+        CalibrationCard(
+            state = state,
+            onSight = onSight,
+            onClear = onClearCalibration,
+        )
+
         // A sibling, not a card inset flush inside another card: nested, its corners stacked against
         // the parent's and it sat on a green slab whenever the qibla was aligned.
         SunMethodCard(alignment = state.sunAlignment)
     }
+}
+
+/**
+ * The solar correction: the one thing on this screen that can make the compass *right* rather than
+ * merely report how wrong it might be.
+ *
+ * Everything else here is diagnosis — the field strength disagrees with the model, the phone is not
+ * level, the sensor wants calibrating. None of it can recover a true bearing from a magnetometer
+ * sitting next to a steel door. A sighting of the sun can, because the sun's azimuth at this place
+ * and this second is arithmetic, and the difference between it and what the compass claims is the
+ * compass's entire error in one number.
+ */
+@Composable
+private fun CalibrationCard(
+    state: UiState,
+    onSight: (SightingMethod) -> Unit,
+    onClear: () -> Unit,
+) {
+    if (!state.hasCompass) return
+    val accents = LocalAthkarAccents.current
+    var sighting by remember { mutableStateOf(false) }
+
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = if (state.isCalibrated) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            val calibration = state.calibration
+            if (calibration == null) {
+                Text(
+                    "اضبط البوصلة بالشمس",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    "الحديد والمغناطيس حولك يزيحان البوصلة عشرات الدرجات وهي تخبرك بالزاوية واثقة. " +
+                        "سَمْت الشمس يُحسب فلكيًا لا يزيغ، فقياسٌ واحد عليه يكشف خطأ بوصلتك ويصحّحه.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(Spacing.md))
+                Button(
+                    onClick = { sighting = true },
+                    enabled = state.canSightSun && state.headingDegrees != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("ابدأ الضبط") }
+                sunUnavailableReason(state)?.let {
+                    Spacer(Modifier.height(Spacing.sm))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                Text(
+                    "البوصلة مضبوطة ${calibration.method.arabicName}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = accents.gold,
+                )
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    // The correction itself, because a user whose compass was twenty degrees out
+                    // deserves to know that — it is the measure of how much the screen was lying
+                    // to them a minute ago, and of what every other compass app still says.
+                    "التصحيح ${Formatting.signedDegrees(calibration.signedOffset)} · " +
+                        Formatting.ago(
+                            java.time.Duration.between(calibration.takenAt, java.time.Instant.now()),
+                        ),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    "الدقة المتوقعة نحو ${degreesLabel(calibration.method.expectedErrorDegrees.toInt())}. " +
+                        "ينتهي الضبط بعد ست ساعات أو إذا انتقلت إلى مكان آخر.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(Spacing.sm))
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    OutlinedButton(
+                        onClick = { sighting = true },
+                        enabled = state.canSightSun,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("إعادة الضبط") }
+                    TextButton(onClick = onClear, modifier = Modifier.weight(1f)) {
+                        Text("إلغاء الضبط")
+                    }
+                }
+            }
+        }
+    }
+
+    if (sighting) {
+        SightingDialog(
+            state = state,
+            onSight = {
+                onSight(it)
+                sighting = false
+            },
+            onDismiss = { sighting = false },
+        )
+    }
+}
+
+/** Why the button is dead, when it is — never a disabled control with no explanation beside it. */
+private fun sunUnavailableReason(state: UiState): String? {
+    val sun = state.sun ?: return null
+    return when {
+        state.headingDegrees == null -> "جارٍ قراءة البوصلة…"
+        sun.altitude < CompassCalibration.MIN_USABLE_ALTITUDE ->
+            "الشمس تحت الأفق الآن — الضبط متاح في النهار."
+        sun.altitude > CompassCalibration.MAX_USABLE_ALTITUDE ->
+            "الشمس قريبة من كبد السماء، والظل أقصر من أن يُقاس عليه. جرّب بعد ساعتين أو قبل الغروب."
+        !state.isLevel -> "سوِّ الجهاز أفقيًا أولًا؛ القياس وهو مائل يثبّت خطأ الميل في الضبط."
+        else -> null
+    }
+}
+
+/**
+ * Taking the sighting.
+ *
+ * The shadow is offered first and recommended, and not only because it is the more accurate of the
+ * two: it is the one that does not ask anybody to point a phone at the sun and look along it. The
+ * warning on the other method is there for the same reason, and is not decoration.
+ */
+@Composable
+private fun SightingDialog(
+    state: UiState,
+    onSight: (SightingMethod) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var method by remember { mutableStateOf(SightingMethod.SHADOW) }
+    val sun = state.sun
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ضبط البوصلة بالشمس") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    MethodChip(
+                        label = "بالظل",
+                        selected = method == SightingMethod.SHADOW,
+                        onClick = { method = SightingMethod.SHADOW },
+                    )
+                    MethodChip(
+                        label = "بالشمس",
+                        selected = method == SightingMethod.SUN,
+                        onClick = { method = SightingMethod.SUN },
+                    )
+                }
+
+                Spacer(Modifier.height(Spacing.md))
+                Text(
+                    when (method) {
+                        SightingMethod.SHADOW ->
+                            "١) ضع الجهاز على أرض مستوية تصلها الشمس.\n" +
+                                "٢) أقِم شيئًا مستقيمًا بجانبه: قلمًا أو عصًا.\n" +
+                                "٣) أدِر الجهاز حتى ينطبق طرفه الأعلى على الظلّ الممتدّ بعيدًا عن الشمس.\n" +
+                                "٤) اضغط «ثبّت الآن» وأنت ممسك به ثابتًا."
+                        SightingMethod.SUN ->
+                            "١) أمسك الجهاز مستويًا أفقيًا كالصينية.\n" +
+                                "٢) أدِر طرفه الأعلى نحو جهة الشمس — جهتها على الأرض، لا قرصها " +
+                                "في السماء.\n" +
+                                "٣) اضغط «ثبّت الآن» وهو ثابت."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                if (method == SightingMethod.SUN) {
+                    Spacer(Modifier.height(Spacing.sm))
+                    Text(
+                        "لا تنظر إلى الشمس مباشرة. وجّه الجهاز نحوها دون أن ترمقها ببصرك.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                if (sun != null) {
+                    Spacer(Modifier.height(Spacing.md))
+                    Text(
+                        "الشمس الآن: سمتها ${Formatting.degrees(sun.azimuth)} " +
+                            "وارتفاعها ${Formatting.degrees(sun.altitude)} فوق الأفق.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    "الدقة المتوقعة بعد الضبط: نحو " +
+                        degreesLabel(method.expectedErrorDegrees.toInt()) + ".",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!state.isLevel) {
+                    Spacer(Modifier.height(Spacing.sm))
+                    Text(
+                        "الجهاز مائل الآن — سوِّه حتى تستقرّ فقاعة الميزان، ثم ثبّت.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSight(method) },
+                // Levelness gates the shutter, not the sheet: the user reads the instructions
+                // first and levels the phone while following them.
+                enabled = state.canSightSun && state.headingDegrees != null && state.isLevel,
+            ) { Text("ثبّت الآن") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
+    )
+}
+
+@Composable
+private fun MethodChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = if (selected) {
+            {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
 
 /**
@@ -376,15 +654,18 @@ private fun AccuracyRow(state: UiState) {
         Check(label = "مستوٍ", satisfied = state.isLevel)
         Check(label = "مُعايَر", satisfied = !state.needsCalibration)
         Check(label = "بلا تشويش", satisfied = !state.isFieldDisturbed)
+        // Shown only once it is true. As an unticked box it would read as a fault in the device
+        // rather than as an action the user has not taken yet, and the card below already asks.
+        if (state.isCalibrated) Check(label = "مضبوطة بالشمس", satisfied = true, gold = true)
     }
 }
 
 @Composable
-private fun Check(label: String, satisfied: Boolean) {
-    val colour = if (satisfied) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.error
+private fun Check(label: String, satisfied: Boolean, gold: Boolean = false) {
+    val colour = when {
+        gold -> LocalAthkarAccents.current.gold
+        satisfied -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.error
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
