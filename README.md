@@ -384,15 +384,17 @@ Releases are cut by tagging. [`release.yml`](.github/workflows/release.yml) runs
 signed APK, launches it on an emulator, refuses to continue if it does not open or if it carries a
 debug signature, and publishes the result.
 
-**Builds go to a separate repository.** This one holds the code, the pipeline and the signing
-configuration and stays private; `abdulmajeedx/athkari-dist` holds nothing but releases. Keeping the
-two apart means the source repository is not a binary store, and the distribution repository can
-change visibility on its own — making downloads public later costs a settings toggle rather than
-publishing the source.
+**Builds go to Google Play, and nowhere else.** A tag uploads the signed bundle straight to the
+closed-testing track, live for the testers on it, with the R8 mapping file attached so crash
+reports arrive readable.
 
-Two settings drive it: the repository variable `DIST_REPO`, and a secret `DIST_REPO_TOKEN` holding a
-fine-grained token with `Contents: read and write` scoped to the distribution repository alone.
-Without them the workflow publishes here instead, with a notice, so a clone still works.
+There used to be a second channel — a private `athkari-dist` repository holding the same APKs. It
+is gone. Being private, downloading from it needed a GitHub account and access, which is a higher
+barrier than the store it was meant to bypass; it sat broken for four releases without anyone
+noticing, which answered the question of who was using it; and maintaining two channels is what let
+the application id drift apart between them. The signed APK and AAB stay attached to each workflow
+run, which covers the one case the mirror was good for: handing a build to somebody without waiting
+on review.
 
 ```bash
 git tag v1.0.1
@@ -454,6 +456,5 @@ The source, the signed builds and the sensitive operational docs are kept in sep
 
 | Repository | Holds | Visibility |
 | --- | --- | --- |
-| [athkari-dist](https://github.com/abdulmajeedx/athkari-dist) | Signed release builds — published automatically by `release.yml` on every tag | Private |
 | [athkari-ops](https://github.com/abdulmajeedx/athkari-ops) | Operational runbooks (signing-key backup/restore) — maintained by hand, deliberately not CI-published | Private |
 | [athkari-privacy](https://github.com/abdulmajeedx/athkari-privacy) | Privacy-policy page for the Play Store / App Store listing, served via GitHub Pages | Public |

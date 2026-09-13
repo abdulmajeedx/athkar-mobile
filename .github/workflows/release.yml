@@ -83,7 +83,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/athkar-release.jks"
 
       # Two artifacts from one build: the .aab is what Google Play accepts for upload, the .apk
-      # is what a person installs directly from the distribution repository. Play will not take an
+      # is what a person installs directly from a run's artifacts. Play will not take an
       # APK for a new app, and an AAB cannot be sideloaded, so neither one replaces the other.
       - name: Build the signed release APK and AAB
         working-directory: android
@@ -208,8 +208,8 @@ jobs:
       # so a clone of this repository keeps working exactly as before.
       #
       # Ahead of the GitHub release on purpose: the two are independent deliveries, and this one
-      # reaches users. Ordering it second meant a broken token for the distribution repository took
-      # the store upload down with it — which is exactly what happened on v1.2.6.
+      # reaches users, and for a while it was ordered behind a GitHub release step whose token had
+      # expired — so a broken mirror took the store upload down with it.
       #
       # It uploads as a DRAFT on purpose. Everything above this line is reproducible and reversible;
       # a Play release is neither. A tag should not be able to put a build in front of users while
@@ -274,67 +274,3 @@ jobs:
           # PLAY_STATUS exists so that pointing PLAY_TRACK at `production` cannot quietly turn a tag
           # push into a public release. Set it to `draft` before that day.
           status: ${{ vars.PLAY_STATUS || 'completed' }}
-
-      # Builds are published to a separate distribution repository so this one — the code, the
-      # keys, the pipeline — stays private and uncluttered by binaries. It falls back to publishing
-      # here when no token for the other repository is configured, so a clone still works.
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ secrets.DIST_REPO_TOKEN || github.token }}
-          DIST_REPO: ${{ vars.DIST_REPO }}
-          HAS_DIST_TOKEN: ${{ secrets.DIST_REPO_TOKEN != '' }}
-          TAG: v${{ steps.version.outputs.name }}
-          VERSION: ${{ steps.version.outputs.name }}
-          APK: ${{ steps.artifact.outputs.path }}
-          BUNDLE: ${{ steps.artifact.outputs.bundle }}
-          MAPPING: ${{ steps.artifact.outputs.mapping }}
-        run: |
-          set -euo pipefail
-
-          if [ -n "${DIST_REPO:-}" ] && [ "$HAS_DIST_TOKEN" != "true" ]; then
-            # Falling back to this repository would put the build somewhere the project has
-            # deliberately decided it does not belong. Every gate above has already run, so the
-            # build is validated; only the delivery is skipped.
-            echo "::notice::DIST_REPO is set to $DIST_REPO but DIST_REPO_TOKEN is missing — build validated, publishing skipped"
-            exit 0
-          fi
-
-          if [ -n "${DIST_REPO:-}" ]; then
-            TARGET="$DIST_REPO"
-            echo "Publishing to the distribution repository: $TARGET"
-          else
-            TARGET="$GITHUB_REPOSITORY"
-            echo "::notice::No DIST_REPO configured — publishing to $TARGET"
-          fi
-
-          NOTES=$(cat <<'EOF'
-          ### التثبيت
-
-          نزّل ملف `.apk` أدناه وثبّته. المستودع خاص، فالتنزيل يحتاج جلسة GitHub —
-          سجّل الدخول في متصفح الجوال أولًا.
-
-          ملف `.aab` ليس للتثبيت؛ هو النسخة التي تُرفع إلى Google Play.
-
-          `sha256` مرفق للتحقق من سلامة كل ملف.
-          EOF
-          )
-
-          # The APK and nothing else, because the APK is the only one of the three a person can
-          # do anything with. An .aab does not install on a phone — it is an upload format, and
-          # the workflow now hands it to Play directly. The mapping file is thirty megabytes of
-          # symbols for reading crash reports, which Play also receives with the bundle. Both used
-          # to be published here, so a download page offered two files that could not be opened
-          # and weighed four times the app. They stay as workflow artifacts if anyone needs them.
-          ASSETS=("$APK" "$APK.sha256")
-
-          # A tag lives in this repository, not the distribution one, so the release there is
-          # created against its own default branch and simply named after the version.
-          if gh release view "$TAG" --repo "$TARGET" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${ASSETS[@]}" --repo "$TARGET" --clobber
-          else
-            gh release create "$TAG" \
-              --repo "$TARGET" \
-              --title "أذكاري $VERSION" \
-              --notes "$NOTES" \
-              "${ASSETS[@]}"
-          fi
