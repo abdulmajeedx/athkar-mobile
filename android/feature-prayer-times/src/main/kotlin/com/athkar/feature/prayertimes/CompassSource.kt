@@ -6,9 +6,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
+import android.hardware.display.DisplayManager
+import android.view.Display
 import android.view.Surface
-import android.view.WindowManager
 import com.athkar.core.prayer.Coordinates
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -83,20 +83,31 @@ class CompassSource @Inject constructor(
      * a value captured at subscription time would be stale from that moment on.
      */
     private fun displayAxes(): Pair<Int, Int> {
-        val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.rotation
-        } else {
-            @Suppress("DEPRECATION")
-            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.rotation
-        } ?: Surface.ROTATION_0
-
-        return when (rotation) {
+        return when (displayRotation()) {
             Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
             Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
             Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
             else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
         }
     }
+
+    /**
+     * How far the screen is turned from the device's natural orientation.
+     *
+     * Read through the *display manager*, never through `Context.display`. This class is
+     * constructed with the application context, and asking an application context for its display
+     * throws `UnsupportedOperationException` on Android 11 and later — it is not associated with
+     * one. That is not a theoretical hazard: it shipped, and it crashed the qibla screen the moment
+     * it opened.
+     *
+     * Every failure here falls back to the natural orientation, which is what the compass assumed
+     * before any of this existed. A heading that is ninety degrees out on a rotated tablet is a bug
+     * worth fixing; a compass that cannot open is worse than the bug it was fixing.
+     */
+    private fun displayRotation(): Int = runCatching {
+        val manager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+        manager?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+    }.getOrNull() ?: Surface.ROTATION_0
 
     fun headings(at: Coordinates): Flow<Heading> = callbackFlow {
         val manager = sensorManager
