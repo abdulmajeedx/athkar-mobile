@@ -11,6 +11,10 @@ on:
       version:
         description: "Version to build, without the leading v (e.g. 1.0.1)"
         required: true
+      publish:
+        description: "Upload to Google Play. Leave off to only send the APK for testing."
+        type: boolean
+        default: false
 
 permissions:
   contents: write # required to create the GitHub Release
@@ -202,6 +206,48 @@ jobs:
             athkar-${{ steps.version.outputs.name }}.*
             mapping-${{ steps.version.outputs.name }}.txt
           if-no-files-found: error
+
+      # The build goes to a phone before it goes to anyone else.
+      #
+      # Every gate above this line proves the app compiles, passes its tests, is signed by the right
+      # key and opens on an emulator. None of them proves the adhan sounds at the right minute or
+      # that the compass points anywhere true — and a crash two taps past the first screen shipped
+      # to testers because CI was never looking there. This step puts the APK in a human's hands
+      # first; Play waits for them to say so.
+      - name: Look for a Telegram bot
+        id: telegram
+        env:
+          HAS_BOT: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: echo "configured=$HAS_BOT" >> "$GITHUB_OUTPUT"
+
+      - name: Send the build for testing
+        if: steps.telegram.outputs.configured == 'true'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APK: ${{ steps.artifact.outputs.path }}
+          VERSION: ${{ steps.version.outputs.name }}
+          PUBLISHING: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          NOTES_FILE="docs/release-notes/$VERSION.ar.txt"
+          if [ "${PUBLISHING:-false}" = "true" ]; then
+            HEADER="نسخة $VERSION — ذاهبة إلى بلاي بعد هذا"
+          else
+            HEADER="نسخة $VERSION — للتجربة، لم تُرفع إلى بلاي"
+          fi
+          # Built in a file rather than inline: the caption is multi-line, and a literal newline
+          # inside this block would end it as far as the YAML parser is concerned.
+          { printf '%s\n\n' "$HEADER"; [ -f "$NOTES_FILE" ] && cat "$NOTES_FILE"; } > caption.txt
+          # --form-string, so a caption that happened to start with @ is text and not a filename.
+          curl -sS --fail-with-body \
+            -X POST "https://api.telegram.org/bot$TOKEN/sendDocument" \
+            -F "chat_id=$CHAT" \
+            -F "document=@$APK" \
+            --form-string "caption=$(cat caption.txt)" \
+            -o /dev/null
+          rm -f caption.txt
+          echo "sent $APK to Telegram"
 
       # Delivery to Google Play, when — and only when — a service account is configured. Without
       # the secret this is skipped and the tag still produces a validated, published GitHub release,
