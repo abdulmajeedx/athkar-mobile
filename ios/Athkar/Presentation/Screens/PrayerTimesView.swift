@@ -1,15 +1,19 @@
 import SwiftUI
 
-/// The day's schedule, the countdown to the next prayer, and the settings that move both.
+/// The day's schedule and the countdown to the next prayer.
+///
+/// The settings that move both used to sit under the list, so reaching the times meant scrolling
+/// past five of them; they are in the settings tab now and this screen shows the day and nothing
+/// else.
 struct PrayerTimesView: View {
 
     @EnvironmentObject private var preferences: PreferencesStore
     @EnvironmentObject private var location: LocationProvider
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.skyPhase) private var sky
 
     @State private var now = Date()
     @State private var showCityPicker = false
-    @State private var notificationsDenied = false
 
     /// One second is the resolution of the countdown; nothing else on the screen depends on it.
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -90,7 +94,6 @@ struct PrayerTimesView: View {
                         .foregroundStyle(.red)
                         .padding(16)
                 }
-                settings
             }
             .padding(16)
         }
@@ -115,7 +118,7 @@ struct PrayerTimesView: View {
                 Text("الصلاة القادمة").font(.caption).foregroundStyle(.white.opacity(0.7))
                 Text(next.prayer.arabicName)
                     .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(Theme.goldBright)
+                    .foregroundStyle(sky.accent)
                 Text(Formatting.time(next.at)).font(.headline).foregroundStyle(.white)
                 Text(Formatting.countdown(next.at.timeIntervalSince(now)))
                     .font(.title3)
@@ -124,11 +127,52 @@ struct PrayerTimesView: View {
             } else {
                 Text("انقضت صلوات اليوم").font(.headline).foregroundStyle(.white)
             }
+
+            currentPrayerBand
         }
         .frame(maxWidth: .infinity)
         .padding(20)
-        .background(Theme.heroGradient(scheme))
+        // The sky of the prayer that has begun. An app that tells the time by the sun and stays
+        // one colour all day is throwing away the most obvious thing it knows.
+        .background(sky.gradient)
         .clipShape(RoundedRectangle(cornerRadius: 28))
+        .animation(.easeInOut(duration: 0.9), value: sky)
+    }
+
+    /// What is happening *now*, under the countdown to what is next.
+    ///
+    /// Between the adhan and the iqama this is the only number that matters, so it takes the
+    /// emphasis; once the iqama has passed it becomes the time elapsed since the call, which is the
+    /// difference between "I still have a moment" and "I have missed the congregation".
+    @ViewBuilder
+    private var currentPrayerBand: some View {
+        if let times = todaysTimes, let current = times.currentPrayer(at: now) {
+            let calledAt = times.time(for: current)
+            let iqamaMinutes = current == .sunrise ? 0 : (preferences.iqamaMinutes[current] ?? 0)
+            let iqamaAt = calledAt.addingTimeInterval(Double(iqamaMinutes) * 60)
+
+            VStack(spacing: 2) {
+                Divider().overlay(Color.white.opacity(0.2)).padding(.vertical, 12)
+
+                if iqamaMinutes > 0, iqamaAt > now {
+                    Text("إقامة \(current.arabicName) بعد")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                    Text(Formatting.countdown(iqamaAt.timeIntervalSince(now)))
+                        .font(.title2.bold())
+                        .foregroundStyle(sky.accent)
+                        .monospacedDigit()
+                } else {
+                    Text("منذ أذان \(current.arabicName)")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                    Text(Formatting.countdown(now.timeIntervalSince(calledAt)))
+                        .font(.title3)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .monospacedDigit()
+                }
+            }
+        }
     }
 
     private func prayerList(_ times: PrayerTimes) -> some View {
@@ -164,112 +208,7 @@ struct PrayerTimesView: View {
         .clipShape(RoundedRectangle(cornerRadius: 22))
     }
 
-    private var settings: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("الإعدادات").font(.subheadline).foregroundStyle(.secondary)
-
-            VStack(spacing: 0) {
-                Picker("طريقة الحساب", selection: methodBinding) {
-                    ForEach(CalculationMethod.allCases) { method in
-                        Text(method.arabicName).tag(method)
-                    }
-                }
-                .pickerStyle(.menu)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-
-                Divider().padding(.horizontal, 16)
-
-                Picker("وقت العصر", selection: madhabBinding) {
-                    ForEach(Madhab.allCases, id: \.self) { madhab in
-                        Text(madhab.arabicName).tag(madhab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(16)
-
-                Divider().padding(.horizontal, 16)
-
-                Toggle("تنبيه عند دخول الوقت", isOn: notificationsBinding)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-
-                if preferences.notificationsEnabled {
-                    Divider().padding(.horizontal, 16)
-                    ForEach(Prayer.allCases) { prayer in
-                        Toggle(
-                            prayer.arabicName,
-                            isOn: Binding(
-                                get: { preferences.notifiedPrayers.contains(prayer) },
-                                set: { _ in
-                                    preferences.toggleNotified(prayer)
-                                    Task { await PrayerNotificationScheduler.reschedule(with: preferences) }
-                                }
-                            )
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
-                    }
-                }
-
-                if notificationsDenied {
-                    Text("الإشعارات مرفوضة لهذا التطبيق. فعّلها من إعدادات النظام ليصلك التنبيه.")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .padding(16)
-                }
-            }
-            .background(Theme.surface(scheme))
-            .clipShape(RoundedRectangle(cornerRadius: 22))
-        }
-    }
-
-    // MARK: - Bindings and derived values
-
-    private var methodBinding: Binding<CalculationMethod> {
-        Binding(
-            get: { preferences.method },
-            set: { value in
-                preferences.setMethod(value)
-                Task { await PrayerNotificationScheduler.reschedule(with: preferences) }
-            }
-        )
-    }
-
-    private var madhabBinding: Binding<Madhab> {
-        Binding(
-            get: { preferences.madhab },
-            set: { value in
-                preferences.setMadhab(value)
-                Task { await PrayerNotificationScheduler.reschedule(with: preferences) }
-            }
-        )
-    }
-
-    private var notificationsBinding: Binding<Bool> {
-        Binding(
-            get: { preferences.notificationsEnabled },
-            set: { wanted in
-                guard wanted else {
-                    preferences.setNotificationsEnabled(false)
-                    PrayerNotificationScheduler.cancelAll()
-                    return
-                }
-                Task {
-                    // Enabling only on a grant keeps the switch honest: it is never on while the
-                    // system is silently dropping every alert.
-                    let granted = await PrayerNotificationScheduler.requestAuthorization()
-                    await MainActor.run {
-                        notificationsDenied = !granted
-                        preferences.setNotificationsEnabled(granted)
-                    }
-                    if granted {
-                        await PrayerNotificationScheduler.reschedule(with: preferences)
-                    }
-                }
-            }
-        )
-    }
+    // MARK: - Derived values
 
     private var todaysTimes: PrayerTimes? {
         guard let coordinates = preferences.place?.coordinates else { return nil }

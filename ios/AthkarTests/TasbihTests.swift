@@ -65,24 +65,24 @@ final class TasbihTests: XCTestCase {
     }
 
     func testAnUnknownStoredPhraseFallsBackInsteadOfCrashing() {
-        XCTAssertEqual(Dhikr.from(name: nil), Dhikr.default)
-        XCTAssertEqual(Dhikr.from(name: "aPhraseFromALaterVersion"), Dhikr.default)
-        for dhikr in Dhikr.allCases {
-            XCTAssertEqual(Dhikr.from(name: dhikr.rawValue), dhikr)
+        XCTAssertEqual(TasbihPhrase.from(name: nil), TasbihPhrase.default)
+        XCTAssertEqual(TasbihPhrase.from(name: "aPhraseFromALaterVersion"), TasbihPhrase.default)
+        for phrase in TasbihPhrase.allCases {
+            XCTAssertEqual(TasbihPhrase.from(name: phrase.rawValue), phrase)
         }
     }
 
     func testEveryPhraseCarriesAUsableTarget() {
-        for dhikr in Dhikr.allCases {
-            XCTAssertGreaterThanOrEqual(dhikr.defaultTarget, 1, "\(dhikr) would complete on every tap")
-            XCTAssertFalse(dhikr.arabic.isEmpty, "\(dhikr) has nothing to show")
+        for phrase in TasbihPhrase.allCases {
+            XCTAssertGreaterThanOrEqual(phrase.defaultTarget, 1, "\(phrase) would complete on every tap")
+            XCTAssertFalse(phrase.arabic.isEmpty, "\(phrase) has nothing to show")
         }
     }
 
     func testTheSalawatIsCountedInFull() {
         // Half a formula was what shipped first: naming the Prophet obliges the salutation with it.
-        XCTAssertTrue(Dhikr.salawat.arabic.contains("وسلِّم"))
-        XCTAssertTrue(Dhikr.salawatAal.arabic.contains("آل محمد"))
+        XCTAssertTrue(TasbihPhrase.salawat.arabic.contains("وسلِّم"))
+        XCTAssertTrue(TasbihPhrase.salawatAal.arabic.contains("آل محمد"))
     }
 }
 

@@ -26,17 +26,46 @@ struct AthkarApp: App {
     }
 }
 
+/// The five tabs, and the hour they are all painted in.
+///
+/// The sky is computed once here rather than in each screen, from the user's own prayer times, so
+/// the header of the adhkar, the face of the compass and the ground of the tasbih are the same hour
+/// and all of them turn together at Maghrib.
 struct RootView: View {
+
+    @EnvironmentObject private var preferences: PreferencesStore
+    @State private var now = Date()
+
+    /// The sky moves at the prayers; a minute is finer than it can ever need.
+    private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
     var body: some View {
         TabView {
             AthkarView()
                 .tabItem { Label("الأذكار", systemImage: "list.bullet") }
+
+            TasbihView()
+                .tabItem { Label("المسبحة", systemImage: "circle.circle") }
 
             PrayerTimesView()
                 .tabItem { Label("الصلاة", systemImage: "clock") }
 
             QiblaView()
                 .tabItem { Label("القبلة", systemImage: "location.north.line") }
+
+            SettingsView()
+                .tabItem { Label("الإعدادات", systemImage: "slider.horizontal.3") }
         }
+        .environment(\.skyPhase, sky)
+        .preferredColorScheme(preferences.theme.colorScheme(sky: sky))
+        .onReceive(clock) { now = $0 }
+    }
+
+    private var sky: SkyPhase {
+        SkyPhase.current(
+            coordinates: preferences.place?.coordinates,
+            parameters: preferences.calculationParameters,
+            at: now
+        )
     }
 }

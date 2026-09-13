@@ -2,10 +2,13 @@ import Foundation
 
 /// A phrase the tasbih counts, and how many of it makes a round.
 ///
+/// Not `Dhikr`, which the corpus already owns: on this side a `Dhikr` is one of the 267 bundled
+/// readings, and the tasbih counts a short formula rather than a reading.
+///
 /// The targets are the ones the phrases are actually said in: the tasbih after every prayer is
 /// thirty-three of each, and the hundredth is لا إله إلا الله. They are defaults, not rules — the
 /// user can count to whatever they like.
-enum Dhikr: String, CaseIterable, Codable, Identifiable, Sendable {
+enum TasbihPhrase: String, CaseIterable, Codable, Identifiable, Sendable {
     case subhanAllah
     case alhamdulillah
     case allahuAkbar
@@ -36,12 +39,12 @@ enum Dhikr: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    static let `default` = Dhikr.subhanAllah
+    static let `default` = TasbihPhrase.subhanAllah
 
     /// A phrase written by a later version of the app reads as absent rather than as a crash.
-    static func from(name: String?) -> Dhikr {
-        guard let name, let dhikr = Dhikr(rawValue: name) else { return .default }
-        return dhikr
+    static func from(name: String?) -> TasbihPhrase {
+        guard let name, let phrase = TasbihPhrase(rawValue: name) else { return .default }
+        return phrase
     }
 }
 
@@ -52,8 +55,8 @@ enum Dhikr: String, CaseIterable, Codable, Identifiable, Sendable {
 /// reconstructed from the other.
 struct TasbihState: Equatable, Sendable {
 
-    var dhikr: Dhikr = .default
-    var target: Int = Dhikr.default.defaultTarget
+    var dhikr: TasbihPhrase = .default
+    var target: Int = TasbihPhrase.default.defaultTarget
     var count: Int = 0
     var rounds: Int = 0
 
@@ -90,7 +93,7 @@ struct TasbihState: Equatable, Sendable {
     }
 
     /// Switching phrase carries its own customary target and starts a fresh count.
-    func selecting(_ next: Dhikr) -> TasbihState {
+    func selecting(_ next: TasbihPhrase) -> TasbihState {
         TasbihState(dhikr: next, target: next.defaultTarget, count: 0, rounds: 0)
     }
 

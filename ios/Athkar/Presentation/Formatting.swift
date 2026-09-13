@@ -70,4 +70,30 @@ enum Formatting {
 
     /// A compass bearing to one decimal place.
     static func bearing(_ degrees: Double) -> String { String(format: "%.1f°", degrees) }
+
+    /// A whole-degree angle, for readouts where a tenth of a degree is noise.
+    static func degrees(_ value: Double) -> String { String(format: "%d°", Int(value.rounded())) }
+
+    /// A correction as a signed turn: `+7°`, `−23°`.
+    ///
+    /// The minus is the mathematical U+2212, not a hyphen: at this size a hyphen beside a numeral
+    /// reads as a dash in the sentence rather than as a sign on the number.
+    static func signedDegrees(_ value: Double) -> String {
+        let rounded = Int(value.rounded())
+        return "\(rounded < 0 ? "−" : "+")\(abs(rounded))°"
+    }
+
+    /// How long ago, coarsely: `الآن`, `قبل 12 دقيقة`, `قبل ساعتين`.
+    static func ago(_ interval: TimeInterval) -> String {
+        let minutes = Int(max(interval, 0)) / 60
+        let hours = minutes / 60
+        switch (hours, minutes) {
+        case (0, 0): return "الآن"
+        case (0, _): return "قبل \(minutes) \(minutes >= 3 && minutes <= 10 ? "دقائق" : "دقيقة")"
+        case (1, _): return "قبل ساعة"
+        case (2, _): return "قبل ساعتين"
+        case (3...10, _): return "قبل \(hours) ساعات"
+        default: return "قبل \(hours) ساعة"
+        }
+    }
 }
