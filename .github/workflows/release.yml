@@ -270,7 +270,7 @@ jobs:
         run: echo "configured=$HAS_PLAY_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Stage the release notes for Play
-        if: steps.play.outputs.configured == 'true'
+        if: steps.play.outputs.configured == 'true' && inputs.publish
         env:
           VERSION: ${{ steps.version.outputs.name }}
         run: |
@@ -291,7 +291,7 @@ jobs:
           fi
 
       - name: Upload to Google Play
-        if: steps.play.outputs.configured == 'true'
+        if: steps.play.outputs.configured == 'true' && inputs.publish
         # Pinned to the commit, not the tag: `v1` is a moving pointer its owner can retag at any
         # time, which would silently swap the code that handles the signing key and the bundle.
         # Verified against the GitHub API — `v1` is an annotated tag resolving to this commit.
