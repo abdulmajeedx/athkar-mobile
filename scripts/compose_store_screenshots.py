@@ -43,6 +43,10 @@ HEADLINES = {
         "أذكار الصباح والمساء",
         "حصن المسلم كاملًا، يعمل بلا إنترنت",
     ),
+    "reading": (
+        "نصّ مشكول يُقرأ مرتاحًا",
+        "بحجم خط تختاره، وعدّاد لكل ذكر بلمسة",
+    ),
     "prayer": (
         "مواقيت الصلاة والأذان",
         "الأذان عند دخول الوقت، وتنبيه قبله بما تختار",
@@ -55,9 +59,17 @@ HEADLINES = {
         "مسبحة إلكترونية",
         "اضغط في أي مكان، والعدّ محفوظ ولو أغلقت التطبيق",
     ),
+    "appearance": (
+        "مظهر يتبع وقت الصلاة",
+        "لون للفجر وآخر للظهر، ويُظلم التطبيق بعد المغرب",
+    ),
 }
 
-ORDER = ["adhkar", "prayer", "qibla", "tasbih"]
+# Six, not four. The listing had eight raw captures on it — an older, three-tab app, unframed, one
+# of them with the keyboard covering half the screen — and replacing a type on Play replaces all of
+# it. Four accurate screenshots beat eight stale ones, but there is no reason to hand back half the
+# page while doing it.
+ORDER = ["adhkar", "reading", "prayer", "qibla", "tasbih", "appearance"]
 
 
 def load_font(size: int, bold: bool) -> ImageFont.FreeTypeFont:
