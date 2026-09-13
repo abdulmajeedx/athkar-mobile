@@ -71,20 +71,24 @@ class Play:
         )
         return [entry["language"] for entry in listings.get("listings", [])]
 
-    def existing(self, language: str, image_type: str) -> int:
+    def existing(self, language: str, image_type: str) -> list[dict]:
         images = self._check(
             self.session.get(
                 f"{BASE}/{self.package}/edits/{self.edit}/listings/{language}/{image_type}",
             ),
             f"reading {image_type}",
         )
-        return len(images.get("images", []))
+        return images.get("images", [])
 
     def replace(self, language: str, image_type: str, files: list[Path]) -> None:
         present = self.existing(language, image_type)
-        print(f"{image_type}: {present} on the listing, uploading {len(files)}")
+        print(f"{image_type}: {len(present)} on the listing, uploading {len(files)}")
+        # What is about to be thrown away, by URL, so it can be looked at before it is. The images
+        # being replaced are the only copy Play holds of them.
+        for image in present:
+            print(f"  replacing {image.get('url', image.get('id', '?'))}")
         for file in files:
-            print(f"  {file.name} ({file.stat().st_size // 1024} KB)")
+            print(f"  uploading {file.name} ({file.stat().st_size // 1024} KB)")
         if self.dry_run:
             return
 
