@@ -261,6 +261,9 @@ jobs:
           # The closed-testing track this app actually uses. Override per run with the workflow
           # input if a build is ever meant for a different one.
           track: ${{ vars.PLAY_TRACK || 'alpha' }}
+          # Named, or Play labels the upload after whatever draft is already open on the track and
+          # a 1.2.8 bundle sits inside a release still calling itself 1.2.7.
+          releaseName: ${{ steps.version.outputs.name }}
           status: draft
 
       # Builds are published to a separate distribution repository so this one — the code, the
@@ -307,8 +310,13 @@ jobs:
           EOF
           )
 
-          ASSETS=("$APK" "$APK.sha256" "$BUNDLE" "$BUNDLE.sha256")
-          [ -n "${MAPPING:-}" ] && [ -f "$MAPPING" ] && ASSETS+=("$MAPPING")
+          # The APK and nothing else, because the APK is the only one of the three a person can
+          # do anything with. An .aab does not install on a phone — it is an upload format, and
+          # the workflow now hands it to Play directly. The mapping file is thirty megabytes of
+          # symbols for reading crash reports, which Play also receives with the bundle. Both used
+          # to be published here, so a download page offered two files that could not be opened
+          # and weighed four times the app. They stay as workflow artifacts if anyone needs them.
+          ASSETS=("$APK" "$APK.sha256")
 
           # A tag lives in this repository, not the distribution one, so the release there is
           # created against its own default branch and simply named after the version.
