@@ -91,9 +91,12 @@ correction. What differs is what the platforms decide, not what was left out.
 **The adhan is the one real loss.** iOS caps a notification sound at thirty seconds and silently
 substitutes its own tone for anything longer — and an app that is not running cannot play audio at
 all, so there is no second mechanism to fall back on the way `AdhanPlayerService` is on Android. The
-bundled `adhan.caf` is the first thirty seconds with a two-second fade, IMA4-compressed to 700 KB,
-cut by ffmpeg from the same recording Android ships. `ios-ci.yml` fails the build if it ever grows
-past the limit, because the failure mode on a device is not an error — it is the wrong sound.
+bundled `adhan.caf` is the first twenty-nine seconds with a two-second fade, IMA4-compressed to
+680 KB, cut by ffmpeg from the same recording Android ships. `ios-ci.yml` fails the build if it ever
+reaches the limit, because the failure mode on a device is not an error — it is the wrong sound.
+
+Twenty-nine rather than thirty because the check caught the first cut: asking ffmpeg for exactly
+thirty seconds produced 30.000181s, which is thirty seconds to any reader and over the line to iOS.
 
 The storage difference is deliberate. The corpus is read-only bundled content and the only mutable
 state is a set of favourite ids and a few scalars, so a database would buy nothing here — the

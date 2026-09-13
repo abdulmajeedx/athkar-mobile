@@ -77,11 +77,14 @@ jobs:
           DURATION=$(afinfo "$SOUND" | awk -F': ' '/estimated duration/ {print $2 + 0}')
           awk -v d="$DURATION" 'BEGIN {
             if (d <= 0) { print "::error::Could not read the adhan\047s duration"; exit 1 }
-            if (d > 30) {
-              printf("::error::The adhan is %.1fs; iOS silently replaces any notification sound over 30s with its own tone\n", d)
+            # Strictly under, not "rounds to". The first cut of this file came out at 30.000181s
+            # from packet granularity, which reads as thirty seconds in every human sense and is
+            # over the line in the only sense that matters.
+            if (d >= 30) {
+              printf("::error::The adhan is %.6fs; iOS silently replaces any notification sound of 30s or more with its own tone\n", d)
               exit 1
             }
-            printf("adhan: %.1fs, within the 30s limit\n", d)
+            printf("adhan: %.3fs, under the 30s limit\n", d)
           }'
 
           ICON=Athkar/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
