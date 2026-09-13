@@ -1,0 +1,43 @@
+name: Store listing
+
+# Pushes the artwork in `store/` to the Play listing. Run by hand after the screenshots have been
+# regenerated — it is not part of a release, because the images change when the UI changes rather
+# than when a version does.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report what would be replaced, then abandon the edit."
+        type: boolean
+        default: true
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the Play API client
+        run: pip install --quiet google-auth requests
+
+      # The same secret the release workflow publishes bundles with. Uploading listing images needs
+      # the "Store presence" permission on top of "Releases", so this can fail where the release
+      # succeeds — the script prints Google's own message rather than guessing at the cause.
+      - name: Upload the listing images
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "::error::Secret PLAY_SERVICE_ACCOUNT_JSON is not set"
+            exit 1
+          fi
+          python3 scripts/ci/upload-play-listing.py \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
