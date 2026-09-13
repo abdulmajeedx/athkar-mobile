@@ -1,0 +1,36 @@
+# Throwaway diagnostic. Three replacements of DIST_REPO_TOKEN in a row answered HTTP 401, which
+# means the stored value is not a credential GitHub accepts — but not why. This reports the shape of
+# the secret without revealing it: a length, a prefix that is identical across every token of that
+# kind, and whether stray whitespace came along with the paste. Delete once the answer is in hand.
+name: Check dist token
+on:
+  push:
+    branches: [diagnose-token]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Describe the stored secret
+        env:
+          T: ${{ secrets.DIST_REPO_TOKEN }}
+        run: |
+          set -uo pipefail
+          if [ -z "${T:-}" ]; then echo "::error::DIST_REPO_TOKEN is empty or unset"; exit 1; fi
+          # Lengths and token-type prefixes are the same for every token of a kind, so neither
+          # narrows the secret; the value itself is never echoed.
+          printf 'length          : %s\n' "${#T}"
+          printf 'prefix          : %s\n' "$(printf %s "$T" | cut -c1-4)"
+          printf 'trailing space? : %s\n' "$(printf %s "$T" | grep -qE '[[:space:]]$' && echo YES || echo no)"
+          printf 'inner whitespace: %s\n' "$(printf %s "$T" | grep -qE '[[:space:]]' && echo YES || echo no)"
+          echo "expected: ghp_ + length 40, or github_pat_ + length 93"
+
+      - name: Ask GitHub what it thinks of it
+        env:
+          GH_TOKEN: ${{ secrets.DIST_REPO_TOKEN }}
+        run: |
+          set -uo pipefail
+          echo "--- whoami ---"
+          gh api user --jq .login || echo "(rejected)"
+          echo "--- access to the distribution repository ---"
+          gh api repos/abdulmajeedx/athkari-dist --jq .full_name || echo "(no access)"
