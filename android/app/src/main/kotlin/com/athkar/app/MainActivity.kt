@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ import com.athkar.designsystem.Elevation
 import com.athkar.feature.athkar.AthkarRoute
 import com.athkar.feature.prayertimes.PrayerTimesRoute
 import com.athkar.feature.prayertimes.QiblaRoute
+import com.athkar.feature.tasbih.TasbihRoute
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -85,6 +87,7 @@ private enum class Destination(
     val deepLink: String,
 ) {
     ATHKAR("athkar", "الأذكار", Icons.AutoMirrored.Filled.MenuBook, "athkar://adhkar"),
+    TASBIH("tasbih", "المسبحة", Icons.Default.RadioButtonChecked, "athkar://tasbih"),
     PRAYER("prayer", "الصلاة", Icons.Default.Schedule, "athkar://prayer"),
     QIBLA("qibla", "القبلة", Icons.Default.Explore, "athkar://qibla"),
 }
@@ -169,6 +172,7 @@ private fun AthkarApp() {
                 ) {
                     when (destination) {
                         Destination.ATHKAR -> AthkarRoute()
+                        Destination.TASBIH -> TasbihRoute()
                         Destination.PRAYER -> PrayerTimesRoute()
                         Destination.QIBLA -> QiblaRoute()
                     }

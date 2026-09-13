@@ -3,6 +3,7 @@ package com.athkar.data.di
 import com.athkar.data.location.AndroidLocationSource
 import com.athkar.data.prefs.PrayerPreferencesRepositoryImpl
 import com.athkar.data.prefs.ReadingPreferencesRepositoryImpl
+import com.athkar.data.prefs.TasbihRepositoryImpl
 import com.athkar.data.repository.AdhkarRepositoryImpl
 import com.athkar.data.repository.SettingsRepositoryImpl
 import com.athkar.data.repository.SyncStateRepositoryImpl
@@ -11,6 +12,7 @@ import com.athkar.domain.Connectivity
 import com.athkar.domain.DeviceLocationSource
 import com.athkar.domain.PrayerPreferencesRepository
 import com.athkar.domain.ReadingPreferencesRepository
+import com.athkar.domain.TasbihRepository
 import com.athkar.domain.SettingsRepository
 import com.athkar.domain.SyncStateRepository
 import dagger.Binds
@@ -47,6 +49,10 @@ abstract class RepositoryModule {
     abstract fun bindReadingPreferencesRepository(
         impl: ReadingPreferencesRepositoryImpl,
     ): ReadingPreferencesRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTasbihRepository(impl: TasbihRepositoryImpl): TasbihRepository
 
     @Binds
     @Singleton

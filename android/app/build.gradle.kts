@@ -116,6 +116,7 @@ dependencies {
     implementation(project(":feature-athkar"))
     implementation(project(":designsystem"))
     implementation(project(":feature-prayer-times"))
+    implementation(project(":feature-tasbih"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
