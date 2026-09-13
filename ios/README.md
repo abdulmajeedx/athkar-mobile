@@ -13,8 +13,8 @@ every push that touches `ios/`. The suite carries the same published reference v
 one, so a divergence between the two ports fails a test rather than leaving two apps quietly
 disagreeing about when Fajr is.
 
-**Last run: 13 tests, 0 failures.** What is *not* verified is everything a test cannot see: no one
-has looked at these screens on a device.
+**Last run: 39 tests, 0 failures.** What is *not* verified is everything a test cannot see: no one
+has looked at these screens on a device, and nobody has heard the adhan come out of one.
 
 ## Build
 
@@ -76,11 +76,24 @@ ios/
 
 ## Differences from the Android app
 
+Feature for feature the two are level: the same corpus, the same timings, the tasbih, the theme that
+follows the prayer, the pre-adhan warning, the iqama, the compass with its level and its solar
+correction. What differs is what the platforms decide, not what was left out.
+
 | | Android | iOS |
 |---|---|---|
 | Storage | Room + SQLCipher | `UserDefaults` |
-| Alerts | `AlarmManager`, two-day window, re-armed on boot | `UNCalendarNotificationTrigger`, 10-day window, rebuilt on foreground |
+| Alerts | `AlarmManager`, two-day window, re-armed on boot | `UNCalendarNotificationTrigger`, 7-day window, rebuilt on foreground |
+| Adhan | the full 2m34s through a foreground service | 30s as the notification's own sound |
 | Compass | rotation vector + manual magnetic declination | `CLHeading.trueHeading` |
+| Level | rotation vector, remapped for display rotation | CoreMotion device attitude |
+
+**The adhan is the one real loss.** iOS caps a notification sound at thirty seconds and silently
+substitutes its own tone for anything longer — and an app that is not running cannot play audio at
+all, so there is no second mechanism to fall back on the way `AdhanPlayerService` is on Android. The
+bundled `adhan.caf` is the first thirty seconds with a two-second fade, IMA4-compressed to 700 KB,
+cut by ffmpeg from the same recording Android ships. `ios-ci.yml` fails the build if it ever grows
+past the limit, because the failure mode on a device is not an error — it is the wrong sound.
 
 The storage difference is deliberate. The corpus is read-only bundled content and the only mutable
 state is a set of favourite ids and a few scalars, so a database would buy nothing here — the
@@ -99,9 +112,11 @@ macOS runner when you push an `ios-vX.Y.Z` tag. Signing assets are created by Xc
 `.mobileprovision` ever has to be base64'd into a secret.
 
 **This workflow has never run.** It needs a paid Apple Developer account, which this project does
-not have, so unlike the Android release pipeline it is unproven.
+not have, so unlike the Android release pipeline it is unproven. Everything that *can* be settled
+without an account has been: the bundle id, the icon, the version, the usage strings, and the two
+Info.plist keys below that otherwise stop a build between the upload and a tester.
 
-One-time setup:
+Setup is four things, and only the third takes any thought:
 
 1. Join the Apple Developer Program.
 2. Register the bundle id `com.athkar.app` and create the app record in App Store Connect.
@@ -115,24 +130,35 @@ One-time setup:
    | `APPSTORE_PRIVATE_KEY` | the whole contents of the downloaded `AuthKey_*.p8` |
    | `APPLE_TEAM_ID` | Apple Developer → Membership |
 
-   The app icon is already in place: `Athkar/Resources/Assets.xcassets`, drawn together with the
-   Android one by
-   [`scripts/generate_icons.py`](../scripts/generate_icons.py). Edit the script and re-run it
-   rather than replacing the PNG by hand, so the source and the artwork stay in step.
+4. Nothing else. The icon is in `Athkar/Resources/Assets.xcassets`, drawn together with the Android
+   one by [`scripts/generate_icons.py`](../scripts/generate_icons.py) — edit the script and re-run
+   it rather than replacing the PNG by hand, so the source and the artwork stay in step.
 
-Then:
+Then, per release:
 
 ```bash
-git tag ios-v1.0.1
-git push origin ios-v1.0.1
+git tag ios-v1.6.0
+git push origin ios-v1.6.0
 ```
+
+### Two keys that are already set, and why they matter
+
+`project.yml` carries both, and each one is a build that would otherwise reach App Store Connect and
+stop there:
+
+- `ITSAppUsesNonExemptEncryption: false` — without it every upload lands in TestFlight marked
+  **Missing Compliance** and reaches no tester until somebody answers the export question by hand in
+  the web console. The answer is no and it cannot change: the app makes no network requests at all.
+- `NSMotionUsageDescription` — the compass reads device attitude for its level. No prompt is shown
+  for it, but App Review looks for the string in any binary that links CoreMotion.
 
 The build number is the repository's commit count, which only ever grows — TestFlight rejects a
 build number it has already seen for a version, and a run number resets if the workflow is recreated.
 
 ## Not implemented
 
-- **No adhan audio.** Alerts use the default notification sound; a custom sound needs an audio file
-  under 30 seconds in the bundle.
 - **No sync.** Same as Android: there is no server.
 - **Portrait only**, matching the compass maths.
+- **No "qibla by the sun" card.** Android lists the two moments each day when the sun stands in the
+  qibla direction. The solar *correction* — the stronger feature, which uses the sun at any hour
+  rather than two — is here; the scan that finds those two instants is not ported yet.

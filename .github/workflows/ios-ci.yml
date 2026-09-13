@@ -63,6 +63,31 @@ jobs:
           fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
+      # Two assets the compiler cannot check and a device fails silently on: iOS substitutes its
+      # own tone for a notification sound longer than thirty seconds or in a format it does not
+      # decode, and App Store Connect rejects an upload with no 1024px icon. Both are the kind of
+      # fault that only shows up at the adhan, or at the upload.
+      - name: Check the bundled assets
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          SOUND=Athkar/Resources/adhan.caf
+          [ -f "$SOUND" ] || { echo "::error::$SOUND is missing"; exit 1; }
+          afinfo "$SOUND"
+          DURATION=$(afinfo "$SOUND" | awk -F': ' '/estimated duration/ {print $2 + 0}')
+          awk -v d="$DURATION" 'BEGIN {
+            if (d <= 0) { print "::error::Could not read the adhan\047s duration"; exit 1 }
+            if (d > 30) {
+              printf("::error::The adhan is %.1fs; iOS silently replaces any notification sound over 30s with its own tone\n", d)
+              exit 1
+            }
+            printf("adhan: %.1fs, within the 30s limit\n", d)
+          }'
+
+          ICON=Athkar/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          [ -f "$ICON" ] || { echo "::error::$ICON is missing — App Store Connect rejects the upload"; exit 1; }
+          sips -g pixelWidth -g pixelHeight "$ICON"
+
       - name: Build and test
         working-directory: ios
         run: |
