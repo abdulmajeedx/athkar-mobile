@@ -69,6 +69,7 @@ import com.athkar.core.prayer.Prayer
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
 import com.athkar.domain.AlertSound
+import com.athkar.domain.PrayerPreferences
 import com.athkar.feature.prayertimes.PrayerTimesViewModel.UiState
 
 /**
@@ -92,6 +93,7 @@ internal fun PrayerSettingsScreen(
     onSelectAlertSound: (AlertSound) -> Unit,
     onPreviewAlertSound: (AlertSound) -> Unit,
     onStopAlertSoundPreview: () -> Unit,
+    onSetPreAdhanMinutes: (Int) -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
 ) {
     var showMethodPicker by remember { mutableStateOf(false) }
@@ -124,6 +126,10 @@ internal fun PrayerSettingsScreen(
                 onSelectAlertSound = onSelectAlertSound,
                 onPreviewAlertSound = onPreviewAlertSound,
                 onStopAlertSoundPreview = onStopAlertSoundPreview,
+            )
+            PreAdhanSettings(
+                minutes = state.preAdhanMinutes,
+                onSet = onSetPreAdhanMinutes,
             )
             IqamaSettings(
                 iqamaMinutes = state.iqamaMinutes,
@@ -475,6 +481,49 @@ private fun openExactAlarmSettings(context: Context) {
  * customary gaps and lets the user correct them to their own. Sunrise is absent because it has no
  * congregation to call.
  */
+/**
+ * How much warning to give before each prayer.
+ *
+ * A row of choices rather than a stepper: the useful values are few and well known, and "off" has
+ * to be one tap away — this is the setting a user turns off at the first alert they did not want.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PreAdhanSettings(minutes: Int, onSet: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        SectionLabel("تنبيه قبل الأذان")
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(Spacing.lg)) {
+                Text(
+                    if (minutes == 0) {
+                        "لا تنبيه قبل الوقت"
+                    } else {
+                        "تنبيه قبل كل صلاة بـ$minutes دقيقة، بلا أذان"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(Spacing.md))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    PrayerPreferences.PRE_ADHAN_CHOICES.forEach { choice ->
+                        MadhabChip(
+                            label = if (choice == 0) "بدون" else "$choice د",
+                            selected = choice == minutes,
+                        ) { onSet(choice) }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun IqamaSettings(
     iqamaMinutes: Map<Prayer, Int>,

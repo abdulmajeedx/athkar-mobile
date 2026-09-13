@@ -80,6 +80,14 @@ data class PrayerPreferences(
     val notificationsEnabled: Boolean = false,
     val notifiedPrayers: Set<Prayer> = DEFAULT_NOTIFIED_PRAYERS,
     val alertSound: AlertSound = AlertSound.DEFAULT,
+    /**
+     * Minutes of warning before each prayer, or zero for none.
+     *
+     * A separate, quieter alert than the adhan, for the gap the adhan cannot fill: the adhan says
+     * the time has come, which is too late to walk to a mosque or finish what you are doing. Off by
+     * default — a second notification per prayer is five more a day, and nobody asked for it.
+     */
+    val preAdhanMinutes: Int = 0,
     val iqamaMinutes: Map<Prayer, Int> = DEFAULT_IQAMA_MINUTES,
 ) {
     /** Minutes between the adhan and the iqama for [prayer]; zero when the prayer has none. */
@@ -97,6 +105,9 @@ data class PrayerPreferences(
     )
 
     companion object {
+        /** The choices offered for the pre-prayer warning. Zero is "off". */
+        val PRE_ADHAN_CHOICES: List<Int> = listOf(0, 5, 10, 15, 20, 30)
+
         val DEFAULT_NOTIFIED_PRAYERS: Set<Prayer> = setOf(
             Prayer.FAJR, Prayer.DHUHR, Prayer.ASR, Prayer.MAGHRIB, Prayer.ISHA,
         )
@@ -126,6 +137,7 @@ interface PrayerPreferencesRepository {
     suspend fun setNotificationsEnabled(enabled: Boolean)
     suspend fun setNotifiedPrayers(prayers: Set<Prayer>)
     suspend fun setAlertSound(sound: AlertSound)
+    suspend fun setPreAdhanMinutes(minutes: Int)
     suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int)
 }
 

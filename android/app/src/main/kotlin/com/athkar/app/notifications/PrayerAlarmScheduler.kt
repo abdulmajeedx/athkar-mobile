@@ -14,6 +14,7 @@ import com.athkar.domain.PrayerPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -66,6 +67,27 @@ class PrayerAlarmScheduler @Inject constructor(
             }
             for (prayer in preferences.notifiedPrayers) {
                 val at = times.timeFor(prayer)
+
+                // The warning is its own alarm rather than a delayed branch of the prayer's: it
+                // fires before it, so it cannot be derived from an alarm that has not gone off yet.
+                val warnMinutes = preferences.preAdhanMinutes
+                if (warnMinutes > 0) {
+                    val warnAt = at.minus(warnMinutes.toLong(), ChronoUnit.MINUTES)
+                    if (warnAt.isAfter(now)) {
+                        schedule(
+                            manager = manager,
+                            prayer = prayer,
+                            at = warnAt,
+                            dayOffset = dayOffset,
+                            // Never the adhan: the call belongs to the time itself, and raising it
+                            // early would announce a prayer whose time has not come.
+                            sound = AlertSound.SILENT,
+                            placeName = place.name,
+                            minutesBefore = warnMinutes,
+                        )
+                    }
+                }
+
                 if (!at.isAfter(now)) continue
                 schedule(
                     manager = manager,
@@ -102,12 +124,13 @@ class PrayerAlarmScheduler @Inject constructor(
         dayOffset: Int,
         sound: AlertSound,
         placeName: String,
+        minutesBefore: Int = 0,
     ) {
         val triggerAt = at.toEpochMilli()
         // setExactAndAllowWhileIdle is the only variant that fires on time in Doze; without the
         // exact-alarm permission the inexact fallback still fires, just late.
         if (canScheduleExactAlarms()) {
-            val exactIntent = pendingIntent(prayer, dayOffset, at, true, sound, placeName)
+            val exactIntent = pendingIntent(prayer, dayOffset, at, true, sound, placeName, minutesBefore)
             val scheduled = exactIntent != null && runCatching {
                 manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, exactIntent)
             }.isSuccess
@@ -115,25 +138,32 @@ class PrayerAlarmScheduler @Inject constructor(
         }
         // Re-created rather than reused: the flag the receiver reads must describe the call that
         // actually registered the alarm, not the one that was attempted first.
-        val inexactIntent = pendingIntent(prayer, dayOffset, at, false, sound, placeName) ?: return
+        val inexactIntent = pendingIntent(prayer, dayOffset, at, false, sound, placeName, minutesBefore) ?: return
         manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, inexactIntent)
     }
 
     private fun cancelAll(manager: AlarmManager) {
         for (dayOffset in 0..LAST_DAY_OFFSET) {
             for (prayer in Prayer.entries) {
-                // NO_CREATE returns null when nothing is pending, so this cancels exactly what exists.
-                val existing = PendingIntent.getBroadcast(
-                    context,
-                    requestCode(prayer, dayOffset),
-                    // Only the component, action and request code decide what this matches; the
-                    // extras are ignored, so placeholders here cancel the real alarm.
-                    alarmIntent(prayer, dayOffset, Instant.EPOCH, false, AlertSound.SILENT, null),
-                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-                )
-                if (existing != null) {
-                    manager.cancel(existing)
-                    existing.cancel()
+                // Both kinds, because a warning the user has just switched off is still pending and
+                // would otherwise fire from a schedule that no longer exists.
+                for (minutesBefore in listOf(0, 1)) {
+                    // NO_CREATE returns null when nothing is pending, so this cancels exactly what
+                    // exists. Only the component, action and request code decide what it matches;
+                    // the extras are ignored, so placeholders here cancel the real alarm.
+                    val existing = PendingIntent.getBroadcast(
+                        context,
+                        requestCode(prayer, dayOffset, minutesBefore > 0),
+                        alarmIntent(
+                            prayer, dayOffset, Instant.EPOCH, false, AlertSound.SILENT, null,
+                            minutesBefore,
+                        ),
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+                    )
+                    if (existing != null) {
+                        manager.cancel(existing)
+                        existing.cancel()
+                    }
                 }
             }
         }
@@ -146,11 +176,12 @@ class PrayerAlarmScheduler @Inject constructor(
         wasExact: Boolean,
         sound: AlertSound,
         placeName: String?,
+        minutesBefore: Int,
     ): PendingIntent? =
         PendingIntent.getBroadcast(
             context,
-            requestCode(prayer, dayOffset),
-            alarmIntent(prayer, dayOffset, at, wasExact, sound, placeName),
+            requestCode(prayer, dayOffset, minutesBefore > 0),
+            alarmIntent(prayer, dayOffset, at, wasExact, sound, placeName, minutesBefore),
             // Extras are what change between the two calls, and only UPDATE_CURRENT rewrites them:
             // intents that differ solely by extras are the same intent as far as matching goes.
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -163,19 +194,28 @@ class PrayerAlarmScheduler @Inject constructor(
         wasExact: Boolean,
         sound: AlertSound,
         placeName: String?,
+        minutesBefore: Int,
     ): Intent =
         Intent(context, PrayerAlarmReceiver::class.java).apply {
-            action = "$ACTION_PRAYER_ALARM.${prayer.name}.$dayOffset"
+            // The warning and the prayer are distinct alarms for the same prayer on the same day,
+            // so the action has to separate them too — PendingIntent matching ignores extras. It
+            // records *which kind*, never how many minutes: the minute count is a setting that
+            // changes, and cancelAll has to be able to name an alarm it did not schedule.
+            action = "$ACTION_PRAYER_ALARM.${prayer.name}.$dayOffset." +
+                if (minutesBefore > 0) "warning" else "adhan"
             putExtra(PrayerAlarmReceiver.EXTRA_PRAYER, prayer.name)
             putExtra(PrayerAlarmReceiver.EXTRA_AT_MILLIS, at.toEpochMilli())
             putExtra(PrayerAlarmReceiver.EXTRA_WAS_EXACT, wasExact)
             putExtra(PrayerAlarmReceiver.EXTRA_ALERT_SOUND, sound.name)
             putExtra(PrayerAlarmReceiver.EXTRA_PLACE_NAME, placeName)
+            putExtra(PrayerAlarmReceiver.EXTRA_MINUTES_BEFORE, minutesBefore)
         }
 
     /** Unique per prayer *and* per day, so tomorrow's Fajr does not overwrite today's. */
-    private fun requestCode(prayer: Prayer, dayOffset: Int): Int =
-        REQUEST_CODE_BASE + dayOffset * Prayer.entries.size + prayer.ordinal
+    private fun requestCode(prayer: Prayer, dayOffset: Int, isWarning: Boolean): Int {
+        val base = if (isWarning) WARNING_REQUEST_CODE_BASE else REQUEST_CODE_BASE
+        return base + dayOffset * Prayer.entries.size + prayer.ordinal
+    }
 
     companion object {
         const val ACTION_PRAYER_ALARM = "com.athkar.app.action.PRAYER_ALARM"
@@ -183,5 +223,8 @@ class PrayerAlarmScheduler @Inject constructor(
         /** Today and tomorrow: always at least one pending alarm, however long the app stays closed. */
         private const val LAST_DAY_OFFSET = 1
         private const val REQUEST_CODE_BASE = 7100
+
+        /** Far enough from [REQUEST_CODE_BASE] that the two blocks cannot overlap as days grow. */
+        private const val WARNING_REQUEST_CODE_BASE = 7200
     }
 }

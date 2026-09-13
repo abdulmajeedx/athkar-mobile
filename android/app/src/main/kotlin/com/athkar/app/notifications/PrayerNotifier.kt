@@ -113,6 +113,56 @@ class PrayerNotifier @Inject constructor(
      */
     fun previewNotificationId(): Int = PREVIEW_NOTIFICATION_ID
 
+    /**
+     * The warning that a prayer is near — [minutesBefore] minutes away.
+     *
+     * Deliberately not an alarm: its own channel at default importance, so it appears without
+     * taking over the screen or overriding silent mode the way a prayer time does. A reminder that
+     * shouts is a reminder people turn off.
+     */
+    fun notifyPreAdhan(prayer: Prayer, minutesBefore: Int, formattedTime: String) {
+        val manager = notificationManager ?: return
+        ensureWarningChannel(manager)
+
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            PRE_ADHAN_REQUEST_CODE + prayer.ordinal,
+            Intent(Intent.ACTION_VIEW, PRAYER_TAB_URI, context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = Notification.Builder(context, CHANNEL_WARNING)
+            .setSmallIcon(R.drawable.ic_notification_prayer)
+            .setContentTitle("اقترب وقت صلاة ${prayer.arabicName}")
+            .setContentText("بقي ${minutesLabel(minutesBefore)} — الأذان $formattedTime")
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .build()
+
+        manager.notify(PRE_ADHAN_NOTIFICATION_ID_BASE + prayer.ordinal, notification)
+    }
+
+    /** Arabic counts its minutes in three forms, and "بقي 2 دقيقة" is not one of them. */
+    private fun minutesLabel(minutes: Int): String = when {
+        minutes == 1 -> "دقيقة"
+        minutes == 2 -> "دقيقتان"
+        minutes in 3..10 -> "$minutes دقائق"
+        else -> "$minutes دقيقة"
+    }
+
+    private fun ensureWarningChannel(manager: NotificationManager) {
+        ensureChannel(
+            manager = manager,
+            id = CHANNEL_WARNING,
+            name = "اقتراب وقت الصلاة",
+            description = "تنبيه قبل دخول الوقت بالمدة التي تختارها",
+            sound = null,
+            importance = NotificationManager.IMPORTANCE_DEFAULT,
+        )
+    }
+
     /** Shows the alert for [prayer] on the channel belonging to [sound]. */
     fun notifyPrayer(
         prayer: Prayer,
@@ -223,10 +273,11 @@ class PrayerNotifier @Inject constructor(
         name: String,
         description: String,
         sound: Uri?,
+        importance: Int = NotificationManager.IMPORTANCE_HIGH,
     ) {
         if (manager.getNotificationChannel(id) != null) return
 
-        val channel = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH).apply {
+        val channel = NotificationChannel(id, name, importance).apply {
             this.description = description
             enableVibration(true)
             if (sound == null) {
@@ -261,10 +312,15 @@ class PrayerNotifier @Inject constructor(
         const val CHANNEL_SILENT = "prayer_times_silent"
         const val CHANNEL_DEVICE_ALARM = "prayer_times_device_alarm_v1"
         const val CHANNEL_ADHAN = "prayer_times_adhan_v1"
+        const val CHANNEL_WARNING = "prayer_times_warning_v1"
         const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
         val PRAYER_TAB_URI: Uri = "athkar://prayer".toUri()
         const val NOTIFICATION_ID_BASE = 4100
         const val PREVIEW_NOTIFICATION_ID = 4150
+
+        /** Its own id space, so a warning never replaces the alert for the prayer it warned about. */
+        const val PRE_ADHAN_NOTIFICATION_ID_BASE = 4160
+        const val PRE_ADHAN_REQUEST_CODE = 4300
         const val STOP_REQUEST_CODE = 4200
     }
 }

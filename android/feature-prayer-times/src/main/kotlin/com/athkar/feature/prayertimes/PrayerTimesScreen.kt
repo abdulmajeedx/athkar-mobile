@@ -105,6 +105,7 @@ fun PrayerTimesRoute(viewModel: PrayerTimesViewModel = hiltViewModel()) {
         onSelectAlertSound = viewModel::selectAlertSound,
         onPreviewAlertSound = viewModel::previewAlertSound,
         onStopAlertSoundPreview = viewModel::stopAlertSoundPreview,
+        onSetPreAdhanMinutes = viewModel::setPreAdhanMinutes,
         onSetIqamaMinutes = viewModel::setIqamaMinutes,
         onDismissError = viewModel::dismissLocationError,
         isPreviewingAlertSound = isPreviewingAlertSound,
@@ -126,6 +127,7 @@ private fun PrayerTimesScreen(
     onSelectAlertSound: (AlertSound) -> Unit,
     onPreviewAlertSound: (AlertSound) -> Unit,
     onStopAlertSoundPreview: () -> Unit,
+    onSetPreAdhanMinutes: (Int) -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
     onDismissError: () -> Unit,
     isPreviewingAlertSound: Boolean,
@@ -151,6 +153,7 @@ private fun PrayerTimesScreen(
                     onSelectAlertSound = onSelectAlertSound,
                     onPreviewAlertSound = onPreviewAlertSound,
                     onStopAlertSoundPreview = onStopAlertSoundPreview,
+                    onSetPreAdhanMinutes = onSetPreAdhanMinutes,
                     onSetIqamaMinutes = onSetIqamaMinutes,
                 )
             }
@@ -408,7 +411,7 @@ private fun CurrentPrayerBand(
     } else {
         countdown.sinceCurrent?.let { elapsed ->
             Text(
-                "مضى على أذان ${current.arabicName}",
+                "منذ أذان ${current.arabicName}",
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.85f),
             )

@@ -48,6 +48,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
             notificationsEnabled = prefs[KEY_NOTIFICATIONS_ENABLED] ?: false,
             notifiedPrayers = prefs[KEY_NOTIFIED_PRAYERS].toPrayers(),
             alertSound = AlertSound.fromName(prefs[KEY_ALERT_SOUND]),
+            preAdhanMinutes = (prefs[KEY_PRE_ADHAN] ?: 0).coerceIn(0, MAX_PRE_ADHAN_MINUTES),
             iqamaMinutes = prefs.toIqamaMinutes(),
         )
     }
@@ -93,6 +94,10 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
 
     override suspend fun setAlertSound(sound: AlertSound) {
         context.prayerDataStore.edit { it[KEY_ALERT_SOUND] = sound.name }
+    }
+
+    override suspend fun setPreAdhanMinutes(minutes: Int) {
+        context.prayerDataStore.edit { it[KEY_PRE_ADHAN] = minutes.coerceIn(0, MAX_PRE_ADHAN_MINUTES) }
     }
 
     override suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int) {
@@ -152,9 +157,13 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val KEY_NOTIFIED_PRAYERS = stringSetPreferencesKey("notified_prayers")
         val KEY_ALERT_SOUND = stringPreferencesKey("alert_sound")
+        val KEY_PRE_ADHAN = intPreferencesKey("pre_adhan_minutes")
         const val NONE_SELECTED = "__none__"
 
         /** An hour is already implausible; the cap only keeps a bad write from rendering absurdly. */
         const val MAX_IQAMA_MINUTES = 60
+
+        /** Beyond this the warning would land before the previous prayer in a short winter day. */
+        const val MAX_PRE_ADHAN_MINUTES = 60
     }
 }

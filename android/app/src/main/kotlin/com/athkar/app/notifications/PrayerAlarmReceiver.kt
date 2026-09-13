@@ -49,11 +49,15 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         // What the alarm was registered with, which is also what the system based its foreground
         // allowance on. Asking the current settings here instead would be asking a different
         // question than the one the platform already answered for this broadcast.
+        val minutesBefore = intent.getIntExtra(EXTRA_MINUTES_BEFORE, 0)
         val scheduledSound = AlertSound.fromName(intent.getStringExtra(EXTRA_ALERT_SOUND))
             .forPrayer(prayer)
         val wasExact = intent.getBooleanExtra(EXTRA_WAS_EXACT, false)
 
-        val playing = scheduledSound == AlertSound.ADHAN &&
+        // A warning never raises the adhan, whatever the sound setting says: the call belongs to
+        // the time itself, and sounding it early announces a prayer whose time has not come.
+        val playing = minutesBefore == 0 &&
+            scheduledSound == AlertSound.ADHAN &&
             wasExact &&
             startAdhan(context, prayer, formattedTime, placeName)
 
@@ -68,6 +72,18 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 val sound = preferences.alertSound.forPrayer(prayer)
 
                 when {
+                    // The warning is its own, quieter thing: it says a time is coming, so it never
+                    // sounds the adhan and never claims the time has arrived.
+                    minutesBefore > 0 -> {
+                        if (wanted && preferences.preAdhanMinutes > 0) {
+                            notifier.notifyPreAdhan(
+                                prayer = prayer,
+                                minutesBefore = minutesBefore,
+                                formattedTime = formattedTime,
+                            )
+                        }
+                    }
+
                     !wanted || (playing && sound != AlertSound.ADHAN) -> {
                         // Either the alert is no longer wanted at all, or it is wanted but no
                         // longer as the adhan. Both mean the recording that has just started is
@@ -156,6 +172,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_WAS_EXACT = "was_exact"
         const val EXTRA_ALERT_SOUND = "alert_sound"
         const val EXTRA_PLACE_NAME = "place_name"
+        const val EXTRA_MINUTES_BEFORE = "minutes_before"
 
         private const val TAG = "AthkarAlarms"
     }

@@ -64,6 +64,7 @@ class PrayerTimesViewModel @Inject constructor(
         val notificationsEnabled: Boolean = false,
         val notifiedPrayers: Set<Prayer> = emptySet(),
         val alertSound: AlertSound = AlertSound.DEFAULT,
+        val preAdhanMinutes: Int = 0,
         val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
         /**
          * Tomorrow's dawn, so the hours after Isha have something to count down to.
@@ -136,6 +137,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
+                preAdhanMinutes = preferences.preAdhanMinutes,
                 hijriDate = Formatting.hijriDate(date),
                 gregorianDate = Formatting.gregorianDate(date),
             )
@@ -157,6 +159,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
+                preAdhanMinutes = preferences.preAdhanMinutes,
                 iqamaMinutes = preferences.iqamaMinutes,
                 // A polar day tomorrow is not a reason to fail today, so this is computed
                 // separately and simply absent when it cannot be had.
@@ -179,6 +182,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
+                preAdhanMinutes = preferences.preAdhanMinutes,
                 error = "الشمس لا تشرق ولا تغرب في هذا الموقع اليوم، فلا يمكن حساب المواقيت. " +
                     "اختر أقرب مدينة تحتها بخط عرض أدنى.",
             )
@@ -287,6 +291,10 @@ class PrayerTimesViewModel @Inject constructor(
             val updated = if (prayer in current) current - prayer else current + prayer
             preferencesRepository.setNotifiedPrayers(updated)
         }
+    }
+
+    fun setPreAdhanMinutes(minutes: Int) {
+        viewModelScope.launch { preferencesRepository.setPreAdhanMinutes(minutes) }
     }
 
     fun setIqamaMinutes(prayer: Prayer, minutes: Int) {

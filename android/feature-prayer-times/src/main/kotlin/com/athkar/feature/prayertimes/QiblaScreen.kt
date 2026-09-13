@@ -40,6 +40,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +63,16 @@ import com.athkar.feature.prayertimes.QiblaViewModel.UiState
 import java.time.ZoneId
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
+
+/** Arabic counts degrees in three forms; "23 درجة" and "3 درجة" are not both right. */
+private fun degreesLabel(degrees: Int): String = when {
+    degrees == 1 -> "درجة"
+    degrees == 2 -> "درجتين"
+    degrees in 3..10 -> "$degrees درجات"
+    else -> "$degrees درجة"
+}
 
 /** Within this many degrees the phone is treated as facing the qibla. */
 private const val ALIGNMENT_TOLERANCE_DEGREES = 4f
@@ -119,6 +133,14 @@ private fun QiblaContent(state: UiState) {
 
     val offAngle = heading?.let { shortestDelta(qibla.toFloat(), it) }
     val isAligned = offAngle != null && abs(offAngle) <= ALIGNMENT_TOLERANCE_DEGREES
+
+    // A pulse on crossing into alignment, not while inside it: the phone is held out and turned,
+    // often at arm's length, and the moment it is right is the one thing the screen cannot tell
+    // someone who is looking at the Kaaba's direction rather than at the glass.
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(isAligned) {
+        if (isAligned) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+    }
 
     Column(
         modifier = Modifier
@@ -196,9 +218,19 @@ private fun QiblaContent(state: UiState) {
                             "لا يوجد حسّاس بوصلة في هذا الجهاز — استعمل الزاوية أعلاه مع بوصلة أخرى."
                         heading == null -> "جارٍ قراءة البوصلة…"
                         isAligned -> "أنت تواجه القبلة"
+                        // Which way, and how far. "Turn until the marks line up" is a description
+                        // of the screen, not an instruction — it leaves the user to guess the
+                        // direction and discover it by turning the wrong way first.
+                        offAngle != null -> {
+                            val away = abs(offAngle).roundToInt()
+                            val side = if (offAngle > 0) "يمينًا" else "يسارًا"
+                            "أدِر الجهاز $side ${degreesLabel(away)}"
+                        }
                         else -> "أدِر الجهاز حتى تنطبق العلامة الذهبية على المؤشر"
                     },
                     style = MaterialTheme.typography.titleSmall,
+                    // Spoken as it changes, so the dial is usable without seeing it.
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     color = if (isAligned) {
                         MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
