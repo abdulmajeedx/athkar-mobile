@@ -103,11 +103,89 @@ jobs:
             -project Athkar.xcodeproj \
             -scheme Athkar \
             -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log || status=$?
 
           echo "----- errors, failures and test counts -----"
           grep -E "error:|failed|Executed [0-9]+ test|\*\* (TEST|BUILD)" build.log | tail -40 || true
           exit "$status"
+
+      # The tests run *in* a simulator without ever starting the app, which leaves the one failure
+      # that matters most unchecked. Android has had this gate since a release shipped a
+      # crash-on-open: a build nobody has launched is a build nobody knows opens.
+      - name: Launch the app on a simulator
+        working-directory: ios
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          set -euo pipefail
+          APP=$(find DerivedData/Build/Products -maxdepth 2 -name 'Athkar.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "::error::No Athkar.app was built"
+            exit 1
+          fi
+
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          # simctl prints "<bundle id>: <pid>"; simulator processes are host processes, so the pid
+          # can be watched from here.
+          PID=$(xcrun simctl launch "$UDID" com.athkar.app | awk -F': ' '{print $2}')
+          echo "launched as pid $PID"
+          sleep 10
+
+          if ! ps -p "$PID" > /dev/null; then
+            echo "::error::The app exited within ten seconds of launching"
+            ls -t ~/Library/Logs/DiagnosticReports 2>/dev/null | head -5 || true
+            cat "$(ls -t ~/Library/Logs/DiagnosticReports/Athkar* 2>/dev/null | head -1)" 2>/dev/null || true
+            exit 1
+          fi
+          echo "still running after ten seconds"
+
+          # The first look anyone has had at these screens: nobody has run this app on a device.
+          mkdir -p screenshots
+          xcrun simctl io "$UDID" screenshot screenshots/launch.png
+          xcrun simctl terminate "$UDID" com.athkar.app || true
+
+      # The same archive command the TestFlight workflow runs, minus the signature — which is the
+      # only part of it that needs a paid account. A Release build for a device can fail where a
+      # Debug build for a simulator passes: different architecture, different optimiser, and the
+      # synthesised Info.plist is only assembled here. Finding that out on the day the membership
+      # is bought would be finding it out at the worst possible moment.
+      - name: Archive for release, unsigned
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project Athkar.xcodeproj \
+            -scheme Athkar \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/Athkar.xcarchive" \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tail -20
+
+          PLIST="$RUNNER_TEMP/Athkar.xcarchive/Products/Applications/Athkar.app/Info.plist"
+          echo "----- the Info.plist that would be uploaded -----"
+          for key in CFBundleIdentifier CFBundleShortVersionString CFBundleVersion \
+                     ITSAppUsesNonExemptEncryption NSLocationWhenInUseUsageDescription \
+                     NSMotionUsageDescription; do
+            value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$PLIST" 2>/dev/null || echo "MISSING")
+            printf '%-38s %s\n' "$key" "$value"
+            if [ "$value" = "MISSING" ]; then
+              echo "::error::$key is missing from the built Info.plist"
+              exit 1
+            fi
+          done
+
+      - name: Upload the launch screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshot
+          path: ios/screenshots
+          if-no-files-found: ignore
 
       - name: Upload the build log
         if: always()
