@@ -1,6 +1,7 @@
 package com.athkar.designsystem
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -9,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -158,29 +160,26 @@ private val AthkarTypography = Typography(
     labelSmall = arabic(12, 20, FontWeight.Medium),
 )
 
-/** Accents that Material's scheme has no slot for, but that the screens need consistently. */
+/**
+ * Accents that Material's scheme has no slot for, but that the screens need consistently.
+ *
+ * The two night-gradient colours that used to live here are gone: they were the tasbih's own ground,
+ * and the tasbih now takes the hour's sky like every other patterned surface, so they were a second
+ * fixed palette sitting beside the one that moves.
+ */
 data class AthkarAccents(
     val gold: Color,
     val onGold: Color,
-    val goldContainer: Color,
-    val nightGradientTop: Color,
-    val nightGradientBottom: Color,
 )
 
 private val LightAccents = AthkarAccents(
     gold = GoldDeep,
     onGold = Color.White,
-    goldContainer = GoldSoft,
-    nightGradientTop = EmeraldDeep,
-    nightGradientBottom = Color(0xFF0A4438),
 )
 
 private val DarkAccents = AthkarAccents(
     gold = GoldBright,
     onGold = Color(0xFF3A2E00),
-    goldContainer = Color(0xFF4A3D0D),
-    nightGradientTop = Color(0xFF11463A),
-    nightGradientBottom = Color(0xFF0A2620),
 )
 
 val LocalAthkarAccents = staticCompositionLocalOf { LightAccents }
@@ -218,16 +217,43 @@ fun AthkarTheme(
         AppTheme.SYSTEM -> systemDark
     }
 
+    val base = if (darkTheme) DarkColors else LightColors
+    // Only the hour-following theme is tinted. The fixed ones are chosen precisely to stop the app
+    // moving, and a page that still drifts from blue to amber across the day is not "فاتح".
+    val colors = if (theme == AppTheme.BY_TIME) {
+        base.tintedBy(sky, if (darkTheme) 0.10f else 0.05f)
+    } else {
+        base
+    }
+
     CompositionLocalProvider(
         LocalLayoutDirection provides LayoutDirection.Rtl,
         LocalAthkarAccents provides if (darkTheme) DarkAccents else LightAccents,
         LocalSkyPhase provides sky,
     ) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = colors,
             typography = AthkarTypography,
             shapes = AthkarShapes,
             content = content,
         )
     }
 }
+
+/**
+ * A wash of the hour's sky across the page itself.
+ *
+ * The patterned surfaces already change with the prayer, but they are a header and a dial — the
+ * rest of the screen stayed the same ivory from Fajr to Isha, so "the app takes its colour from the
+ * time" was true of a third of it. A few per cent is deliberate: enough that Asr's page is visibly
+ * warmer than Dhuhr's when they are put side by side, far too little to move any text off the
+ * contrast it was chosen for. The foreground roles are untouched for exactly that reason.
+ */
+private fun ColorScheme.tintedBy(sky: SkyPhase, amount: Float): ColorScheme = copy(
+    background = lerp(background, sky.top, amount),
+    surface = lerp(surface, sky.top, amount * 0.6f),
+    surfaceVariant = lerp(surfaceVariant, sky.top, amount * 0.6f),
+    surfaceContainer = lerp(surfaceContainer, sky.top, amount * 0.6f),
+    surfaceContainerHigh = lerp(surfaceContainerHigh, sky.top, amount * 0.6f),
+    surfaceContainerHighest = lerp(surfaceContainerHighest, sky.top, amount * 0.6f),
+)
