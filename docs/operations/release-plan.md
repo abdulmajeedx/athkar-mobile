@@ -50,23 +50,55 @@ Rules enforced in CI:
   MINOR version. Measurement: a GitHub Actions version-compatibility check that compares the change
   set against an allow-list and fails the build otherwise (tool: GitHub Actions script over the diff).
 
-### 1.2 Auto-incrementing build number
+### 1.2 The build number
 
-- **Android:** `versionCode` is a monotonically increasing integer, set to the CI-provided build
-  number. `versionName` is `MAJOR.MINOR.PATCH`. The Play Console rejects a build whose `versionCode`
-  is not strictly greater than the last one; CI fails if the build number is not a fresh integer.
-  Measurement: `./gradlew :app:printVersionCode` output compared against the last published
-  `versionCode` from the Play Developer API (tool: Gradle + `bump.sh` in `scripts/build/`).
-- **iOS:** `CFBundleVersion` is the same monotonically increasing integer build number;
-  `CFBundleShortVersionString` is `MAJOR.MINOR.PATCH`. App Store Connect requires a unique
-  `CFBundleVersion` per submission; CI fails if it collides (tool: App Store Connect API
-  `appStoreVersions` lookup + `fastlane lane :bump_build`).
-- **Single source of truth:** the numeric build number is minted **once per pipeline run** by the CI
-  service (GitHub Actions run number or a dedicated counter service) and written into
-  `android/app/build.gradle.kts` and the Xcode project by `scripts/build/generate-version.sh` before
-  compilation. Both platforms in the same release **share** the same build number whenever a release
-  ships both simultaneously.
-- Build numbers are **never reused**, even after a rollback; a re-release gets a fresh number.
+`versionCode` on Android and `CFBundleVersion` on iOS are integers the store compares; neither is
+shown to anyone. Both are **derived, not minted** — there is no counter service, no file rewritten
+before compilation, and nothing to keep in step between two repositories:
+
+| | Derived from | Where |
+|---|---|---|
+| Android `versionCode` | `MAJOR * 10000 + MINOR * 100 + PATCH` | the `Derive version` step of `release.yml` |
+| Android `versionName` | the tag, minus its `v` | the same step, passed as `-Pathkar.versionName` |
+| iOS `CFBundleVersion` | `git rev-list --count HEAD` | the `Derive the version` step of `ios-testflight.yml` |
+| iOS `CFBundleShortVersionString` | the tag, minus its `ios-v` | the same step |
+
+The Android form is deterministic: 1.7.0 is always 10700, on any machine, from any checkout. That
+matters more than density — the alternative, a run number, resets to 1 the day somebody recreates
+the workflow, and a `versionCode` that goes backwards is a release Play will not accept and an
+update no installed phone will take.
+
+The iOS form is a commit count instead, because TestFlight rejects a build number it has seen for a
+version, and a re-upload of the same version after a rejected binary has to be a fresh number. The
+count only ever grows.
+
+Build numbers are **never reused**. Play and App Store Connect both enforce this themselves, so it
+is not a rule that needs a check of its own.
+
+### 1.3 When a tagged release fails
+
+This is where the version history's gaps came from, and they are worth explaining because the rule
+that prevents them is one sentence.
+
+`v1.0.7` does not exist. Neither do `v1.2.2`, `v1.2.3` or `v1.2.4`. What happened each time was a
+tag pushed, a build failing somewhere after it, and the next attempt going out under the next
+number — five consecutive failures on the 1.2.x line, each burning the name it was carrying.
+
+Nothing forced that. A failed run publishes nothing: no bundle reaches Play, no artifact reaches a
+tester, and the `versionCode` the store compares against is never consumed. So:
+
+> **If a release fails before it delivers anything, fix the cause and move the tag.**
+> `git tag -f v1.7.0 && git push -f origin v1.7.0`. Burn a number only once something has actually
+> gone out under it.
+
+Once a build has reached Play or a tester, its number is spent — that copy exists on someone's
+phone, and a second, different build calling itself the same thing is how a bug report becomes
+unanswerable.
+
+One consequence worth stating: a version's meaning is **what the user received**, not what was
+committed. Several features landing on the same day are one release with one number, not one number
+each. Four minor bumps in an afternoon are all technically correct under §1.1 and still tell a
+tester nothing about what changed.
 
 ---
 
