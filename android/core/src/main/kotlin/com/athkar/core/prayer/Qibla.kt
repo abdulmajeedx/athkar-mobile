@@ -13,6 +13,12 @@ import kotlin.math.tan
  * A rhumb line — the "straight line on a flat map" people expect — is the wrong answer: it is not
  * the shortest path on a sphere, and its error grows to tens of degrees at long range. The initial
  * bearing of the great circle is the direction one actually faces.
+ *
+ * This is the same computation the [AlAdhan qibla API](https://aladhan.com/qibla-api) performs, and
+ * `QiblaTest` checks it against AlAdhan's published values for a dozen cities: the two agree to a
+ * thousandth of a degree everywhere. It is done here rather than fetched because a fetched bearing
+ * would send the user's coordinates to a server, fail without a network, and arrive no more correct
+ * than the one computed on the phone in a few microseconds.
  */
 object Qibla {
 

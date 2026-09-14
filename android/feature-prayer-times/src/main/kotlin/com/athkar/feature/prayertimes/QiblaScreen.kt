@@ -65,11 +65,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.athkar.core.prayer.QiblaBySun
 import com.athkar.designsystem.LocalAthkarAccents
 import com.athkar.designsystem.LocalSkyPhase
 import com.athkar.designsystem.PatternedSurface
 import com.athkar.designsystem.Sizing
+import com.athkar.core.prayer.SkyFix
+import com.athkar.core.prayer.SkyReference
 import com.athkar.designsystem.Spacing
 import com.athkar.domain.CompassCalibration
 import com.athkar.domain.SightingMethod
@@ -314,16 +315,107 @@ private fun QiblaContent(
             }
         }
 
+        SkyCard(state = state)
+
         CalibrationCard(
             state = state,
             onSight = onSight,
             onClear = onClearCalibration,
         )
-
-        // A sibling, not a card inset flush inside another card: nested, its corners stacked against
-        // the parent's and it sat on a green slab whenever the qibla was aligned.
-        SunMethodCard(alignment = state.sunAlignment)
     }
+}
+
+/**
+ * The qibla without a compass.
+ *
+ * Everything above this on the screen is a magnetometer reading dressed up carefully — levelled,
+ * checked against the field model, warned about. None of that can rescue a sensor sitting beside a
+ * steel door, which is wrong by tens of degrees and says so with complete confidence.
+ *
+ * This is the way out, and it is the old way: the sun, a shadow, the moon. Their bearings are
+ * arithmetic — computed here to a hundredth of a degree from the same model the prayer times rest
+ * on, checked against NASA's published ephemeris — and no magnet on Earth can move them. Nothing on
+ * this card is measured, so there is nothing to calibrate and nothing to hold still.
+ */
+@Composable
+private fun SkyCard(state: UiState) {
+    val accents = LocalAthkarAccents.current
+
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            Text(
+                "القبلة من السماء",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            Text(
+                "اتجاه محسوب لا مقيس: لا بوصلة فيه ولا معايرة، ولا يفسده حديد ولا مغناطيس.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (state.skyFixes.isEmpty()) {
+                Spacer(Modifier.height(Spacing.md))
+                Text(
+                    "لا الشمس ولا القمر ظاهران الآن. استعمل البوصلة أعلاه، أو انتظر طلوع أحدهما.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                state.skyFixes.forEach { fix ->
+                    Spacer(Modifier.height(Spacing.md))
+                    SkyFixRow(fix = fix, gold = accents.gold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkyFixRow(fix: SkyFix, gold: Color) {
+    val away = abs(fix.turn).roundToInt()
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            fix.reference.arabicName,
+            style = MaterialTheme.typography.titleSmall,
+            color = gold,
+            modifier = Modifier.width(Sizing.touchTarget),
+        )
+        Spacer(Modifier.width(Spacing.sm))
+        Column {
+            Text(
+                // The whole instruction in one sentence, in the order the body performs it.
+                when {
+                    away == 0 -> "استقبل ${facing(fix.reference)} فأنت تواجه القبلة"
+                    else -> "استقبل ${facing(fix.reference)} ثم أدِر " +
+                        "${if (fix.turn > 0) "يمينًا" else "يسارًا"} ${degreesLabel(away)}"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                buildString {
+                    append("ارتفاعها ${Formatting.degrees(fix.altitude)} عن الأفق")
+                    fix.illumination?.let {
+                        append(" · مضيء ${(it * 100).roundToInt()}٪")
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Arabic wants the article and the right gender: "استقبل الظلّ" but "استقبل الشمس". */
+private fun facing(reference: SkyReference): String = when (reference) {
+    SkyReference.SHADOW -> "الظلّ الممتدّ من شيء قائم"
+    SkyReference.SUN -> "الشمس"
+    SkyReference.MOON -> "القمر"
 }
 
 /**
@@ -360,69 +452,36 @@ private fun CalibrationCard(
         Column(Modifier.padding(Spacing.lg)) {
             val calibration = state.calibration
             if (calibration == null) {
-                Text(
-                    "اضبط البوصلة بالشمس",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.height(Spacing.xs))
-                Text(
-                    "الحديد والمغناطيس حولك يزيحان البوصلة عشرات الدرجات وهي تخبرك بالزاوية واثقة. " +
-                        "سَمْت الشمس يُحسب فلكيًا لا يزيغ، فقياسٌ واحد عليه يكشف خطأ بوصلتك ويصحّحه.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(Spacing.md))
-                Button(
+                // Not a pitch any more. The sky card above gives the direction outright, so the
+                // needle's own correction is a thing the user may want rather than a chore the app
+                // asks of them — one line, no headline, no paragraph selling it.
+                TextButton(
                     onClick = { sighting = true },
-                    enabled = state.canSightSun && state.headingDegrees != null,
+                    enabled = state.canSightSun && state.headingDegrees != null && state.isLevel,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("ابدأ الضبط") }
-                sunUnavailableReason(state)?.let {
-                    Spacer(Modifier.height(Spacing.sm))
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                ) {
+                    Text("ضبط إبرة البوصلة بالشمس (اختياري)")
                 }
             } else {
                 Text(
                     "البوصلة مضبوطة ${calibration.method.arabicName}",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     color = accents.gold,
                 )
                 Spacer(Modifier.height(Spacing.xs))
                 Text(
-                    // The correction itself, because a user whose compass was twenty degrees out
-                    // deserves to know that — it is the measure of how much the screen was lying
-                    // to them a minute ago, and of what every other compass app still says.
                     "التصحيح ${Formatting.signedDegrees(calibration.signedOffset)} · " +
                         Formatting.ago(
                             java.time.Duration.between(calibration.takenAt, java.time.Instant.now()),
-                        ),
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                Spacer(Modifier.height(Spacing.xs))
-                Text(
-                    "الدقة المتوقعة نحو ${degreesLabel(calibration.method.expectedErrorDegrees.toInt())}. " +
-                        "ينتهي الضبط بعد ست ساعات أو إذا انتقلت إلى مكان آخر.",
-                    style = MaterialTheme.typography.bodySmall,
+                        ) + " · ينتهي بعد ست ساعات أو إذا انتقلت",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(Spacing.sm))
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedButton(
-                        onClick = { sighting = true },
-                        enabled = state.canSightSun,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("إعادة الضبط") }
-                    TextButton(onClick = onClear, modifier = Modifier.weight(1f)) {
-                        Text("إلغاء الضبط")
+                    TextButton(onClick = { sighting = true }, enabled = state.canSightSun) {
+                        Text("إعادة الضبط")
                     }
+                    TextButton(onClick = onClear) { Text("إلغاء") }
                 }
             }
         }
@@ -574,75 +633,10 @@ private fun MethodChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * The sun as a qibla reference, and the reason this screen has one.
- *
- * A magnetometer can be tens of degrees wrong beside anything ferrous and reports those degrees with
- * complete confidence — it has no way to know it is lying. The sun cannot be pulled off course by a
- * speaker magnet, and its position is computed here from the same solar model the prayer times come
- * from. At the moment below, facing the sun is facing the Kaaba to a fraction of a degree.
- */
-@Composable
-private fun SunMethodCard(alignment: QiblaBySun?) {
-    if (alignment == null || (alignment.facingSun == null && alignment.facingShadow == null)) return
-    val zone = remember { ZoneId.systemDefault() }
-
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(Spacing.lg)) {
-            Text(
-                "القبلة بالشمس — الأدقّ",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(Spacing.xs))
-            Text(
-                "لا يشوّشها معدن ولا مغناطيس، وتُحسب فلكيًا بدقة أجزاء من الدرجة.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            alignment.facingSun?.let {
-                Spacer(Modifier.height(Spacing.md))
-                SunMoment(
-                    time = Formatting.time(it, zone),
-                    instruction = "استقبل الشمس في هذه اللحظة فتكون مستقبلًا القبلة تمامًا.",
-                )
-            }
-            alignment.facingShadow?.let {
-                Spacer(Modifier.height(Spacing.md))
-                SunMoment(
-                    time = Formatting.time(it, zone),
-                    instruction = "ظلّ أي شيء قائم في هذه اللحظة يشير إلى القبلة.",
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SunMoment(time: String, instruction: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        Text(
-            time,
-            style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
-            color = LocalAthkarAccents.current.gold,
-        )
-        Spacer(Modifier.width(Spacing.md))
-        Text(
-            instruction,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/**
- * The three conditions a magnetic bearing depends on, stated rather than assumed.
+ * The conditions a magnetic bearing depends on, stated rather than assumed.
  *
  * A compass that is wrong looks exactly like a compass that is right — it has no way to know. These
- * are the checks the app *can* run, so it shows all three and their verdicts instead of a single
+ * are the checks the app *can* run, so it shows all of them and their verdicts instead of a single
  * "accuracy" word that means nothing to the person holding the phone.
  */
 @Composable
@@ -655,7 +649,7 @@ private fun AccuracyRow(state: UiState) {
         Check(label = "مُعايَر", satisfied = !state.needsCalibration)
         Check(label = "بلا تشويش", satisfied = !state.isFieldDisturbed)
         // Shown only once it is true. As an unticked box it would read as a fault in the device
-        // rather than as an action the user has not taken yet, and the card below already asks.
+        // rather than as an action the user has not taken — and this screen no longer asks.
         if (state.isCalibrated) Check(label = "مضبوطة بالشمس", satisfied = true, gold = true)
     }
 }

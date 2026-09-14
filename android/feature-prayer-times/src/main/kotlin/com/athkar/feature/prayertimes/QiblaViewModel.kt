@@ -4,8 +4,10 @@ import android.hardware.SensorManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.athkar.core.prayer.Qibla
+import com.athkar.core.prayer.QiblaBySky
 import com.athkar.core.prayer.QiblaBySun
 import com.athkar.core.prayer.QiblaSunAlignment
+import com.athkar.core.prayer.SkyFix
 import com.athkar.core.prayer.SolarPosition
 import com.athkar.domain.CompassCalibration
 import com.athkar.domain.CompassCalibrationRepository
@@ -64,6 +66,13 @@ class QiblaViewModel @Inject constructor(
         val rollDegrees: Float = 0f,
         /** Today's moments when the sun itself marks the qibla, which no magnet can disturb. */
         val sunAlignment: QiblaBySun? = null,
+        /**
+         * The qibla as a turn from something visible in the sky, right now.
+         *
+         * The direction without a compass at all: computed rather than measured, so there is
+         * nothing in it for a car door to bend and nothing for the user to calibrate.
+         */
+        val skyFixes: List<SkyFix> = emptyList(),
         /** The correction in force, or null when the compass is running raw. */
         val calibration: CompassCalibration? = null,
         /** Where the sun is at this moment, for taking a sighting against. */
@@ -127,19 +136,25 @@ class QiblaViewModel @Inject constructor(
             // applied, so the screen shows the compass running raw and can say why.
             stored?.takeUnless { it.isStale(Instant.now(), place.coordinates) }
         }
-        val sun = solarTicker.map { SolarPosition.at(place.coordinates, it) }
+        // One tick drives both: where the sun is for a sighting, and where the sky says the qibla
+        // is. Recomputing the fixes is a few hundred floating-point operations — cheaper than the
+        // recomposition it feeds.
+        val sky = solarTicker.map { moment ->
+            SolarPosition.at(place.coordinates, moment) to
+                QiblaBySky.fixes(place.coordinates, moment)
+        }
 
         if (!base.hasCompass) {
-            return combine(corrections, sun) { calibration, position ->
-                base.copy(calibration = calibration, sun = position)
+            return combine(corrections, sky) { calibration, (position, fixes) ->
+                base.copy(calibration = calibration, sun = position, skyFixes = fixes)
             }
         }
 
         return combine(
             compassSource.headings(place.coordinates),
             corrections,
-            sun,
-        ) { heading, calibration, position ->
+            sky,
+        ) { heading, calibration, (position, fixes) ->
             rawHeading.value = heading.trueHeadingDegrees
             base.copy(
                 headingDegrees = calibration?.correct(heading.trueHeadingDegrees)
@@ -152,6 +167,7 @@ class QiblaViewModel @Inject constructor(
                 rollDegrees = heading.rollDegrees,
                 calibration = calibration,
                 sun = position,
+                skyFixes = fixes,
             )
         }.onStart { emit(base) }
     }
