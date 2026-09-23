@@ -15,7 +15,7 @@ python3 scripts/generate_store_assets.py
 
 | الملف | المقاس | الوزن | أين يُرفع |
 |---|---|---|---|
-| `play-icon-512.png` | 512×512 | 19 KB | Play Console ← Main store listing ← **App icon** |
+| `play-icon-512.png` | 512×512 | 10 KB | Play Console ← Main store listing ← **App icon** |
 | `play-feature-graphic.png` | 1024×500 | 30 KB | Play Console ← Main store listing ← **Feature graphic** |
 
 كلاهما PNG بلا قناة شفافية — وهو ما يشترطه Play للاثنين؛ الأيقونة بقناة ألفا تُرفض.
