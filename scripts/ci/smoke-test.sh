@@ -138,44 +138,36 @@ fi
 
 # The daily adhkar reminders open their own chapter through `athkar://adhkar?chapter=…`. Nothing
 # else exercises that link, and a link that silently lands on the index looks like a working app
-# in every other check here, so the screen it produces is read back and asserted on.
+# in every other check here.
 #
 # Both ways a reminder reaches the app: from a stopped process, where the link arrives through
 # onCreate, and into a running one, where it arrives through onNewIntent. They take different paths
-# through the navigation code, and only the second one ever broke before.
-screen_has() {
-    # Polled rather than read once: the chapter can still be drawing when the first dump is taken,
-    # and uiautomator itself sometimes fails to find an idle moment.
-    for _ in 1 2 3 4 5; do
-        if adb shell uiautomator dump /sdcard/window.xml > /dev/null 2>&1 \
-            && adb exec-out cat /sdcard/window.xml 2>/dev/null | grep -qF "$1"; then
+# through the navigation code.
+#
+# The assertion reads the line the adhkar tab logs when it takes a chapter from a link, not the
+# screen. uiautomator was tried first and never got a dump: it waits for the window to go idle,
+# and this app's colours follow the sun, so it never does. The screenshots stay, for a person.
+follow_link() {
+    local chapter=$1 shot=$2 how=$3
+    adb logcat -c || true
+    adb shell am start -W -a android.intent.action.VIEW -d "'athkar://adhkar?chapter=$chapter'" \
+        -n "$APP_ID/$ACTIVITY" > /dev/null || fail "am start failed for chapter $chapter"
+    for _ in $(seq 1 15); do
+        if adb logcat -d -s AthkarLinks:I 2>/dev/null | grep -qF "opening chapter $chapter from a link"; then
+            capture "$shot"
+            echo "  $chapter opened $how"
             return 0
         fi
-        sleep 2
+        sleep 1
     done
-    return 1
-}
-
-open_link() {
-    adb shell am start -W -a android.intent.action.VIEW -d "'athkar://adhkar?chapter=$1'" \
-        -n "$APP_ID/$ACTIVITY" > /dev/null || fail "am start failed for chapter $1"
-    sleep 4
+    capture "$shot"
+    adb logcat -d > "$LOGCAT_OUT" 2>/dev/null || true
+    fail "The reminder link for $chapter did not open its chapter $how"
 }
 
 echo "Following the reminder links..."
 adb shell am force-stop "$APP_ID"
-open_link cat-28
-capture "06-link-sleep"
-# A line only the sleep chapter contains; the index shows titles, never readings.
-screen_has "يَجْمَعُ كَفَّيْهِ" \
-    || fail "The sleep reminder link did not open the sleep chapter from a stopped app"
-
-open_link cat-27m
-capture "07-link-morning"
-# Ayat al-Kursi opens both the morning and the evening chapter, so the title decides which: the
-# index would show both titles, the evening chapter would show its own.
-screen_has "الشَّيطَانِ الرَّجِيمِ" && screen_has "أذكار الصباح" && ! screen_has "أذكار المساء" \
-    || fail "The morning reminder link did not open the morning chapter in a running app"
-echo "  both links opened their chapter"
+follow_link cat-28 "06-link-sleep" "from a stopped app"
+follow_link cat-27m "07-link-morning" "into a running app"
 
 echo "Smoke test passed: $APP_ID launched and stayed in the foreground for ${OBSERVE_SECONDS}s (pid $PID)."

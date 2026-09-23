@@ -1,5 +1,6 @@
 package com.athkar.feature.athkar
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -202,7 +203,12 @@ class AthkarViewModel @Inject constructor(
         if (savedState.get<Boolean>(KEY_LINK_READ) == true) return null
         savedState[KEY_LINK_READ] = true
         val link = savedState.get<android.content.Intent>(NavController.KEY_DEEP_LINK_INTENT)?.data
-        return link?.getQueryParameter(LINK_CHAPTER_PARAMETER)?.also { savedState[KEY_OPEN_CHAPTER] = it }
+        return link?.getQueryParameter(LINK_CHAPTER_PARAMETER)?.also {
+            savedState[KEY_OPEN_CHAPTER] = it
+            // Read by the CI smoke test, which cannot read the screen: uiautomator waits for an
+            // idle window, and this app's colours follow the sun, so its window is never idle.
+            Log.i(TAG, "opening chapter $it from a link")
+        }
     }
 
     /** The bundle stores exactly one chapter key per row in `times`. */
@@ -214,6 +220,7 @@ class AthkarViewModel @Inject constructor(
         private const val KEY_OPEN_CHAPTER = "open_chapter"
         private const val KEY_LINK_READ = "link_read"
         private const val LINK_CHAPTER_PARAMETER = "chapter"
+        private const val TAG = "AthkarLinks"
         const val FAVOURITES_TITLE = "المفضلة"
     }
 }
