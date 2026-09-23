@@ -10,6 +10,7 @@ import com.athkar.core.prayer.Prayer
 import com.athkar.core.prayer.PrayerTimes
 import com.athkar.domain.AlertSound
 import com.athkar.domain.AlertSoundPreview
+import com.athkar.domain.DailyAdhkar
 import com.athkar.domain.DeviceLocationSource
 import com.athkar.domain.Place
 import com.athkar.domain.PrayerPreferences
@@ -68,6 +69,9 @@ class PrayerTimesViewModel @Inject constructor(
         val preAdhanMinutes: Int = 0,
         val highLatitudeRule: HighLatitudeRule? = null,
         val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
+        val adhkarRemindersEnabled: Boolean = false,
+        /** Today's reminder times, so the switch says when it will speak rather than just that it will. */
+        val adhkarReminderTimes: Map<DailyAdhkar, Instant> = emptyMap(),
         /**
          * Tomorrow's dawn, so the hours after Isha have something to count down to.
          *
@@ -140,6 +144,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 preAdhanMinutes = preferences.preAdhanMinutes,
+                adhkarRemindersEnabled = preferences.adhkarRemindersEnabled,
                 highLatitudeRule = preferences.highLatitudeRule,
                 hijriDate = Formatting.hijriDate(date),
                 gregorianDate = Formatting.gregorianDate(date),
@@ -157,12 +162,14 @@ class PrayerTimesViewModel @Inject constructor(
                 method = preferences.method,
                 madhab = preferences.madhab,
                 rows = Prayer.entries.map { PrayerRow(it, times.timeFor(it)) },
+                adhkarReminderTimes = DailyAdhkar.entries.associateWith { it.remindAt(times) },
                 hijriDate = Formatting.hijriDate(date),
                 gregorianDate = Formatting.gregorianDate(date),
                 notificationsEnabled = preferences.notificationsEnabled,
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 preAdhanMinutes = preferences.preAdhanMinutes,
+                adhkarRemindersEnabled = preferences.adhkarRemindersEnabled,
                 highLatitudeRule = preferences.highLatitudeRule,
                 iqamaMinutes = preferences.iqamaMinutes,
                 // A polar day tomorrow is not a reason to fail today, so this is computed
@@ -187,6 +194,7 @@ class PrayerTimesViewModel @Inject constructor(
                 notifiedPrayers = preferences.notifiedPrayers,
                 alertSound = preferences.alertSound,
                 preAdhanMinutes = preferences.preAdhanMinutes,
+                adhkarRemindersEnabled = preferences.adhkarRemindersEnabled,
                 highLatitudeRule = preferences.highLatitudeRule,
                 error = "الشمس لا تشرق ولا تغرب في هذا الموقع اليوم، فلا يمكن حساب المواقيت. " +
                     "اختر أقرب مدينة تحتها بخط عرض أدنى.",
@@ -305,6 +313,10 @@ class PrayerTimesViewModel @Inject constructor(
 
     fun setPreAdhanMinutes(minutes: Int) {
         viewModelScope.launch { preferencesRepository.setPreAdhanMinutes(minutes) }
+    }
+
+    fun setAdhkarRemindersEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAdhkarRemindersEnabled(enabled) }
     }
 
     fun setIqamaMinutes(prayer: Prayer, minutes: Int) {

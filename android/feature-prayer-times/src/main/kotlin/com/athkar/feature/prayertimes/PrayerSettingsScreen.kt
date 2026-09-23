@@ -72,6 +72,9 @@ import com.athkar.core.prayer.Prayer
 import com.athkar.designsystem.Sizing
 import com.athkar.designsystem.Spacing
 import com.athkar.domain.AlertSound
+import com.athkar.domain.DailyAdhkar
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.abs
 import com.athkar.domain.PrayerPreferences
 import com.athkar.feature.prayertimes.PrayerTimesViewModel.UiState
@@ -108,6 +111,7 @@ fun PrayerSettingsRoute(
         onSelectHighLatitudeRule = viewModel::selectHighLatitudeRule,
         onSetPreAdhanMinutes = viewModel::setPreAdhanMinutes,
         onSetIqamaMinutes = viewModel::setIqamaMinutes,
+        onSetAdhkarRemindersEnabled = viewModel::setAdhkarRemindersEnabled,
     )
 }
 
@@ -135,6 +139,7 @@ internal fun PrayerSettingsScreen(
     onSelectHighLatitudeRule: (HighLatitudeRule?) -> Unit,
     onSetPreAdhanMinutes: (Int) -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
+    onSetAdhkarRemindersEnabled: (Boolean) -> Unit,
 ) {
     var showMethodPicker by remember { mutableStateOf(false) }
 
@@ -166,6 +171,12 @@ internal fun PrayerSettingsScreen(
                 onSelectAlertSound = onSelectAlertSound,
                 onPreviewAlertSound = onPreviewAlertSound,
                 onStopAlertSoundPreview = onStopAlertSoundPreview,
+            )
+            AdhkarReminderSettings(
+                enabled = state.adhkarRemindersEnabled,
+                times = state.adhkarReminderTimes,
+                hasPlace = state.place != null,
+                onSetEnabled = onSetAdhkarRemindersEnabled,
             )
             PreAdhanSettings(
                 minutes = state.preAdhanMinutes,
@@ -587,6 +598,71 @@ private fun HighLatitudeSettings(
             }
         }
     }
+}
+
+/**
+ * The morning and evening adhkar reminders.
+ *
+ * Its own switch, apart from the prayer alerts, and its own permission request for the same
+ * reason: it can be the only notification the user has turned on.
+ */
+@Composable
+private fun AdhkarReminderSettings(
+    enabled: Boolean,
+    times: Map<DailyAdhkar, Instant>,
+    hasPlace: Boolean,
+    onSetEnabled: (Boolean) -> Unit,
+) {
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> onSetEnabled(granted) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        SectionLabel("أذكار الصباح والمساء")
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(Spacing.lg), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("تذكير بالأذكار", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        adhkarReminderDescription(enabled, times, hasPlace),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { wantsEnabled ->
+                        if (wantsEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            onSetEnabled(wantsEnabled)
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun adhkarReminderDescription(
+    enabled: Boolean,
+    times: Map<DailyAdhkar, Instant>,
+    hasPlace: Boolean,
+): String {
+    // The times come from the prayer times, so without a place there is nothing to remind at —
+    // better said here than left for the user to notice the reminders never came.
+    if (!hasPlace) return "حدّد موقعك أولًا، فوقت التذكير يُحسب من مواقيت الصلاة"
+    val morning = times[DailyAdhkar.MORNING]
+    val evening = times[DailyAdhkar.EVENING]
+    if (!enabled || morning == null || evening == null) {
+        return "تذكير بين الفجر والشروق، وبين العصر والمغرب"
+    }
+    val zone = ZoneId.systemDefault()
+    return "الصباح ${Formatting.time(morning, zone)}، والمساء ${Formatting.time(evening, zone)} اليوم"
 }
 
 @OptIn(ExperimentalLayoutApi::class)

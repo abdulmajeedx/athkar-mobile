@@ -50,6 +50,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
             alertSound = AlertSound.fromName(prefs[KEY_ALERT_SOUND]),
             preAdhanMinutes = (prefs[KEY_PRE_ADHAN] ?: 0).coerceIn(0, MAX_PRE_ADHAN_MINUTES),
             iqamaMinutes = prefs.toIqamaMinutes(),
+            adhkarRemindersEnabled = prefs[KEY_ADHKAR_REMINDERS] ?: false,
         )
     }
 
@@ -106,6 +107,10 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun setAdhkarRemindersEnabled(enabled: Boolean) {
+        context.prayerDataStore.edit { it[KEY_ADHKAR_REMINDERS] = enabled }
+    }
+
     // A value written by another version of the app must not crash this one; an unrecognised name
     // falls back to the default exactly as an absent one does.
     private fun String?.toMethod(): CalculationMethod =
@@ -158,6 +163,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         val KEY_NOTIFIED_PRAYERS = stringSetPreferencesKey("notified_prayers")
         val KEY_ALERT_SOUND = stringPreferencesKey("alert_sound")
         val KEY_PRE_ADHAN = intPreferencesKey("pre_adhan_minutes")
+        val KEY_ADHKAR_REMINDERS = booleanPreferencesKey("adhkar_reminders_enabled")
         const val NONE_SELECTED = "__none__"
 
         /** An hour is already implausible; the cap only keeps a bad write from rendering absurdly. */
