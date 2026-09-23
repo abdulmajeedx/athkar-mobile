@@ -146,19 +146,20 @@ class PrayerNotifier @Inject constructor(
     }
 
     /**
-     * The reminder to read the morning or evening adhkar.
+     * The reminder to read one of the daily adhkar.
      *
      * Quiet like the pre-adhan warning, and on a channel of its own so it can be silenced in the
-     * system settings without touching the prayer alerts. Opens the adhkar tab, where both sets
-     * are the first two chapters.
+     * system settings without touching the prayer alerts. Opens the chapter it names, not the
+     * adhkar index: the reminder has already said what to read, and making the user find it among
+     * 133 chapters is the one step between the nudge and the reading that loses them.
      */
     fun notifyAdhkar(kind: DailyAdhkar) {
         val manager = notificationManager ?: return
         ensureChannel(
             manager = manager,
             id = CHANNEL_ADHKAR,
-            name = "أذكار الصباح والمساء",
-            description = "تذكير بأذكار الصباح بين الفجر والشروق، وأذكار المساء بين العصر والمغرب",
+            name = "تذكير الأذكار",
+            description = "تذكير بأذكار الصباح والمساء والنوم في أوقاتها",
             sound = null,
             importance = NotificationManager.IMPORTANCE_DEFAULT,
         )
@@ -166,7 +167,7 @@ class PrayerNotifier @Inject constructor(
         val contentIntent = PendingIntent.getActivity(
             context,
             ADHKAR_REQUEST_CODE + kind.ordinal,
-            Intent(Intent.ACTION_VIEW, ADHKAR_TAB_URI, context, MainActivity::class.java)
+            Intent(Intent.ACTION_VIEW, adhkarChapterUri(kind.chapterKey), context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -180,8 +181,8 @@ class PrayerNotifier @Inject constructor(
             .setContentIntent(contentIntent)
             .build()
 
-        // One id for both, so an unread morning reminder is replaced by the evening one rather
-        // than piling up beside it.
+        // One id for all of them, so an unread morning reminder is replaced by the evening one
+        // rather than piling up beside it.
         manager.notify(ADHKAR_NOTIFICATION_ID, notification)
     }
 
@@ -349,6 +350,10 @@ class PrayerNotifier @Inject constructor(
     private fun adhanUri(): Uri =
         "${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.adhan}".toUri()
 
+    /** The adhkar tab, opened on [chapterKey]. The tab reads the parameter; see AthkarViewModel. */
+    private fun adhkarChapterUri(chapterKey: String): Uri =
+        "athkar://adhkar".toUri().buildUpon().appendQueryParameter("chapter", chapterKey).build()
+
     private companion object {
         const val CHANNEL_SILENT = "prayer_times_silent"
         const val CHANNEL_DEVICE_ALARM = "prayer_times_device_alarm_v1"
@@ -357,7 +362,6 @@ class PrayerNotifier @Inject constructor(
         const val CHANNEL_ADHKAR = "adhkar_reminders_v1"
         const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
         val PRAYER_TAB_URI: Uri = "athkar://prayer".toUri()
-        val ADHKAR_TAB_URI: Uri = "athkar://adhkar".toUri()
         const val NOTIFICATION_ID_BASE = 4100
         const val PREVIEW_NOTIFICATION_ID = 4150
 

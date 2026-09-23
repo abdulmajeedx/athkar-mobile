@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Fires at a morning or evening reminder: posts it, then re-registers the two-day window.
+ * Fires at a daily adhkar reminder: posts it, then re-registers the two-day window.
  *
  * The rescheduling is not optional. A user with the reminders on and every prayer alert off has no
  * prayer alarm firing to roll the window forward, so without it the reminders would stop two days
@@ -39,7 +39,7 @@ class AdhkarReminderReceiver : BroadcastReceiver() {
             try {
                 val preferences = preferencesRepository.observe().first()
                 // A cancelled alarm the OS still delivers must not remind someone who said stop.
-                if (preferences.adhkarRemindersEnabled) notifier.notifyAdhkar(kind)
+                if (kind in preferences.adhkarReminders) notifier.notifyAdhkar(kind)
                 scheduler.reschedule(preferences)
             } finally {
                 pendingResult.finish()

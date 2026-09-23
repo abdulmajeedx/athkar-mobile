@@ -111,7 +111,7 @@ fun PrayerSettingsRoute(
         onSelectHighLatitudeRule = viewModel::selectHighLatitudeRule,
         onSetPreAdhanMinutes = viewModel::setPreAdhanMinutes,
         onSetIqamaMinutes = viewModel::setIqamaMinutes,
-        onSetAdhkarRemindersEnabled = viewModel::setAdhkarRemindersEnabled,
+        onSetAdhkarReminder = viewModel::setAdhkarReminder,
     )
 }
 
@@ -139,7 +139,7 @@ internal fun PrayerSettingsScreen(
     onSelectHighLatitudeRule: (HighLatitudeRule?) -> Unit,
     onSetPreAdhanMinutes: (Int) -> Unit,
     onSetIqamaMinutes: (Prayer, Int) -> Unit,
-    onSetAdhkarRemindersEnabled: (Boolean) -> Unit,
+    onSetAdhkarReminder: (DailyAdhkar, Boolean) -> Unit,
 ) {
     var showMethodPicker by remember { mutableStateOf(false) }
 
@@ -173,10 +173,10 @@ internal fun PrayerSettingsScreen(
                 onStopAlertSoundPreview = onStopAlertSoundPreview,
             )
             AdhkarReminderSettings(
-                enabled = state.adhkarRemindersEnabled,
+                enabled = state.adhkarReminders,
                 times = state.adhkarReminderTimes,
                 hasPlace = state.place != null,
-                onSetEnabled = onSetAdhkarRemindersEnabled,
+                onSet = onSetAdhkarReminder,
             )
             PreAdhanSettings(
                 minutes = state.preAdhanMinutes,
@@ -601,68 +601,94 @@ private fun HighLatitudeSettings(
 }
 
 /**
- * The morning and evening adhkar reminders.
+ * The daily adhkar reminders, one switch each.
  *
- * Its own switch, apart from the prayer alerts, and its own permission request for the same
- * reason: it can be the only notification the user has turned on.
+ * Apart from the prayer alerts, with its own permission request for the same reason: it can be the
+ * only notification the user has turned on. The permission is asked for on the first reminder
+ * switched on, and a refusal leaves that switch off rather than on and silently muted.
  */
 @Composable
 private fun AdhkarReminderSettings(
-    enabled: Boolean,
+    enabled: Set<DailyAdhkar>,
     times: Map<DailyAdhkar, Instant>,
     hasPlace: Boolean,
-    onSetEnabled: (Boolean) -> Unit,
+    onSet: (DailyAdhkar, Boolean) -> Unit,
 ) {
+    var pending by remember { mutableStateOf<DailyAdhkar?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> onSetEnabled(granted) }
+    ) { granted ->
+        pending?.let { if (granted) onSet(it, true) }
+        pending = null
+    }
+    val zone = ZoneId.systemDefault()
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        SectionLabel("أذكار الصباح والمساء")
+        SectionLabel("تذكير الأذكار")
         Card(
             shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Row(Modifier.padding(Spacing.lg), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("تذكير بالأذكار", style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.padding(vertical = Spacing.sm)) {
+                // The times come from the prayer times, so without a place there is nothing to
+                // remind at — better said here than left for the user to notice nothing came.
+                if (!hasPlace) {
                     Text(
-                        adhkarReminderDescription(enabled, times, hasPlace),
+                        "حدّد موقعك أولًا، فأوقات التذكير تُحسب من مواقيت الصلاة",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                     )
                 }
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = { wantsEnabled ->
-                        if (wantsEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            onSetEnabled(wantsEnabled)
+                DailyAdhkar.entries.forEachIndexed { index, kind ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = Sizing.touchTarget)
+                            .padding(horizontal = Spacing.lg, vertical = Spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(kind.title, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                reminderWhen(kind, times[kind], zone),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                    },
-                )
+                        Switch(
+                            checked = kind in enabled,
+                            onCheckedChange = { wantsEnabled ->
+                                if (wantsEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pending = kind
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    onSet(kind, wantsEnabled)
+                                }
+                            },
+                        )
+                    }
+                    if (index != DailyAdhkar.entries.lastIndex) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.padding(horizontal = Spacing.lg),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-private fun adhkarReminderDescription(
-    enabled: Boolean,
-    times: Map<DailyAdhkar, Instant>,
-    hasPlace: Boolean,
-): String {
-    // The times come from the prayer times, so without a place there is nothing to remind at —
-    // better said here than left for the user to notice the reminders never came.
-    if (!hasPlace) return "حدّد موقعك أولًا، فوقت التذكير يُحسب من مواقيت الصلاة"
-    val morning = times[DailyAdhkar.MORNING]
-    val evening = times[DailyAdhkar.EVENING]
-    if (!enabled || morning == null || evening == null) {
-        return "تذكير بين الفجر والشروق، وبين العصر والمغرب"
+/** Today's time when it is known, and the window it falls in either way. */
+private fun reminderWhen(kind: DailyAdhkar, at: Instant?, zone: ZoneId): String {
+    val window = when (kind) {
+        DailyAdhkar.MORNING -> "بين الفجر والشروق"
+        DailyAdhkar.EVENING -> "بين العصر والمغرب"
+        DailyAdhkar.SLEEP -> "بعد العشاء"
     }
-    val zone = ZoneId.systemDefault()
-    return "الصباح ${Formatting.time(morning, zone)}، والمساء ${Formatting.time(evening, zone)} اليوم"
+    return if (at == null) window else "$window — اليوم ${Formatting.time(at, zone)}"
 }
 
 @OptIn(ExperimentalLayoutApi::class)

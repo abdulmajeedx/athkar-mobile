@@ -3,6 +3,7 @@ package com.athkar.feature.athkar
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavController
 import com.athkar.core.domain.AdhkarReminder
 import com.athkar.designsystem.ReadingSize
 import com.athkar.domain.AdhkarRepository
@@ -67,7 +68,7 @@ class AthkarViewModel @Inject constructor(
         data class SetReadingSize(val size: ReadingSize) : Intent
     }
 
-    private val openChapterKey = MutableStateFlow<String?>(savedState[KEY_OPEN_CHAPTER])
+    private val openChapterKey = MutableStateFlow(savedState[KEY_OPEN_CHAPTER] ?: chapterFromLink())
     private val query = MutableStateFlow("")
 
     /**
@@ -189,6 +190,21 @@ class AthkarViewModel @Inject constructor(
         adhkarRepository.upsert(current.copy(pinned = !(current.pinned ?: false)))
     }
 
+    /**
+     * The chapter named by the link that opened this tab, if any — `athkar://adhkar?chapter=…`,
+     * which is what a daily adhkar reminder carries.
+     *
+     * Read once per back-stack entry. The link stays in the entry's arguments for its whole life,
+     * so without the marker a chapter the user has since closed would open again every time the
+     * process is recreated. An unknown key is harmless: it matches no chapter and the index shows.
+     */
+    private fun chapterFromLink(): String? {
+        if (savedState.get<Boolean>(KEY_LINK_READ) == true) return null
+        savedState[KEY_LINK_READ] = true
+        val link = savedState.get<android.content.Intent>(NavController.KEY_DEEP_LINK_INTENT)?.data
+        return link?.getQueryParameter(LINK_CHAPTER_PARAMETER)?.also { savedState[KEY_OPEN_CHAPTER] = it }
+    }
+
     /** The bundle stores exactly one chapter key per row in `times`. */
     private fun AdhkarReminder.chapterKey(): String? = times?.firstOrNull()
 
@@ -196,6 +212,8 @@ class AthkarViewModel @Inject constructor(
         const val FAVOURITES_KEY = "__favourites"
         private const val KEY_COUNTERS = "counters"
         private const val KEY_OPEN_CHAPTER = "open_chapter"
+        private const val KEY_LINK_READ = "link_read"
+        private const val LINK_CHAPTER_PARAMETER = "chapter"
         const val FAVOURITES_TITLE = "المفضلة"
     }
 }

@@ -90,14 +90,14 @@ data class PrayerPreferences(
     val preAdhanMinutes: Int = 0,
     val iqamaMinutes: Map<Prayer, Int> = DEFAULT_IQAMA_MINUTES,
     /**
-     * Whether to remind the user of the morning and evening adhkar.
+     * Which of the daily adhkar to remind the user of. Empty means none.
      *
      * Independent of [notificationsEnabled]: someone who prays at the mosque and wants no adhan
-     * from their phone may still want the nudge to read. Off by default, for the same reason the
-     * prayer alerts are. Needs a [place], because the reminder times are derived from the prayer
-     * times.
+     * from their phone may still want the nudge to read. Empty by default, for the same reason the
+     * prayer alerts are off. Needs a [place], because the reminder times are derived from the
+     * prayer times.
      */
-    val adhkarRemindersEnabled: Boolean = false,
+    val adhkarReminders: Set<DailyAdhkar> = emptySet(),
 ) {
     /** Minutes between the adhan and the iqama for [prayer]; zero when the prayer has none. */
     fun iqamaFor(prayer: Prayer): Int = iqamaMinutes[prayer] ?: 0
@@ -148,7 +148,7 @@ interface PrayerPreferencesRepository {
     suspend fun setAlertSound(sound: AlertSound)
     suspend fun setPreAdhanMinutes(minutes: Int)
     suspend fun setIqamaMinutes(prayer: Prayer, minutes: Int)
-    suspend fun setAdhkarRemindersEnabled(enabled: Boolean)
+    suspend fun setAdhkarReminders(reminders: Set<DailyAdhkar>)
 }
 
 /** Port for a one-shot device location fix. Returns null when unavailable or not permitted. */

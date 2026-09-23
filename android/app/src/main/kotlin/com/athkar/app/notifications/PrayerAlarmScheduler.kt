@@ -66,20 +66,26 @@ class PrayerAlarmScheduler @Inject constructor(
             if (preferences.notificationsEnabled) {
                 schedulePrayers(manager, preferences, times, dayOffset, now, place.name)
             }
-            if (preferences.adhkarRemindersEnabled) {
-                scheduleAdhkar(manager, times, dayOffset, now)
+            if (preferences.adhkarReminders.isNotEmpty()) {
+                scheduleAdhkar(manager, preferences.adhkarReminders, times, dayOffset, now)
             }
         }
     }
 
     /**
-     * The morning and evening reminders for one day.
+     * The chosen adhkar reminders for one day.
      *
      * Registered by the same pass as the prayers, so every event that reschedules those — a
      * settings change, a reboot, a time-zone change, the alarm firing — keeps these rolling too.
      */
-    private fun scheduleAdhkar(manager: AlarmManager, times: PrayerTimes, dayOffset: Int, now: Instant) {
-        for (kind in DailyAdhkar.entries) {
+    private fun scheduleAdhkar(
+        manager: AlarmManager,
+        kinds: Set<DailyAdhkar>,
+        times: PrayerTimes,
+        dayOffset: Int,
+        now: Instant,
+    ) {
+        for (kind in kinds) {
             val at = kind.remindAt(times)
             if (!at.isAfter(now)) continue
             val intent = PendingIntent.getBroadcast(
