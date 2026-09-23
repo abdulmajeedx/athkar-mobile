@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: the white crescent and gold tasbih of the store listing
+     (adhkar_app assets/icon/icon_foreground.svg, scaled 1024 -> 108dp). Everything sits inside
+     the 33dp safe radius so no launcher mask crops it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M57.39,34.96 A15.82,15.82 0 1,0 67.16,59.19 A13.29,13.29 0 1,1 57.39,34.96 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M51.89,67.50 a2.11,2.11 0 1,0 4.22,0 a2.11,2.11 0 1,0 -4.22,0 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M47.46,69.93 a1.79,1.79 0 1,0 3.58,0 a1.79,1.79 0 1,0 -3.58,0 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M56.96,69.93 a1.79,1.79 0 1,0 3.58,0 a1.79,1.79 0 1,0 -3.58,0 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M43.56,73.51 a1.48,1.48 0 1,0 2.96,0 a1.48,1.48 0 1,0 -2.96,0 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M61.48,73.51 a1.48,1.48 0 1,0 2.96,0 a1.48,1.48 0 1,0 -2.96,0 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M52.63,76.25 a1.37,1.37 0 1,0 2.74,0 a1.37,1.37 0 1,0 -2.74,0 Z" />
+    <path android:fillColor="#D8B562" android:pathData="M54.00,69.61 H54.01 A0.84,0.84 0 0 1 54.85,70.45 V74.47 A0.84,0.84 0 0 1 54.01,75.31 H54.00 A0.84,0.84 0 0 1 53.16,74.47 V70.45 A0.84,0.84 0 0 1 54.00,69.61 Z" />
+</vector>
