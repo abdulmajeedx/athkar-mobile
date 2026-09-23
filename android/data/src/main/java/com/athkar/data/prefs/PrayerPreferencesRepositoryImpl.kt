@@ -16,6 +16,7 @@ import com.athkar.core.prayer.HighLatitudeRule
 import com.athkar.core.prayer.Madhab
 import com.athkar.core.prayer.Prayer
 import com.athkar.domain.AlertSound
+import com.athkar.domain.DailyAdhkar
 import com.athkar.domain.Place
 import com.athkar.domain.PrayerPreferences
 import com.athkar.domain.PrayerPreferencesRepository
@@ -50,7 +51,7 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
             alertSound = AlertSound.fromName(prefs[KEY_ALERT_SOUND]),
             preAdhanMinutes = (prefs[KEY_PRE_ADHAN] ?: 0).coerceIn(0, MAX_PRE_ADHAN_MINUTES),
             iqamaMinutes = prefs.toIqamaMinutes(),
-            adhkarRemindersEnabled = prefs[KEY_ADHKAR_REMINDERS] ?: false,
+            adhkarReminders = prefs.toAdhkarReminders(),
         )
     }
 
@@ -107,8 +108,17 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun setAdhkarRemindersEnabled(enabled: Boolean) {
-        context.prayerDataStore.edit { it[KEY_ADHKAR_REMINDERS] = enabled }
+    override suspend fun setAdhkarReminders(reminders: Set<DailyAdhkar>) {
+        context.prayerDataStore.edit { prefs ->
+            // Written as a set with a marker for "none", like the notified prayers, so an empty
+            // choice survives a restart instead of being read as "never chosen".
+            prefs[KEY_ADHKAR_REMINDERS] = if (reminders.isEmpty()) {
+                setOf(NONE_SELECTED)
+            } else {
+                reminders.map { it.name }.toSet()
+            }
+            prefs.remove(KEY_ADHKAR_REMINDERS_LEGACY)
+        }
     }
 
     // A value written by another version of the app must not crash this one; an unrecognised name
@@ -126,6 +136,21 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         this == null -> PrayerPreferences.DEFAULT_NOTIFIED_PRAYERS
         contains(NONE_SELECTED) -> emptySet()
         else -> mapNotNull { name -> Prayer.entries.firstOrNull { it.name == name } }.toSet()
+    }
+
+    /**
+     * The chosen reminders, or — for a device that ran the one-switch build — morning and evening
+     * when that switch was on, so turning the reminders into a choice does not silently turn off
+     * the ones someone already had.
+     */
+    private fun Preferences.toAdhkarReminders(): Set<DailyAdhkar> {
+        val stored = this[KEY_ADHKAR_REMINDERS]
+            ?: return if (this[KEY_ADHKAR_REMINDERS_LEGACY] == true) {
+                setOf(DailyAdhkar.MORNING, DailyAdhkar.EVENING)
+            } else {
+                emptySet()
+            }
+        return stored.mapNotNull { name -> DailyAdhkar.entries.firstOrNull { it.name == name } }.toSet()
     }
 
     /** One key per prayer rather than an encoded map: a single malformed entry cannot lose the rest. */
@@ -163,7 +188,10 @@ class PrayerPreferencesRepositoryImpl @Inject constructor(
         val KEY_NOTIFIED_PRAYERS = stringSetPreferencesKey("notified_prayers")
         val KEY_ALERT_SOUND = stringPreferencesKey("alert_sound")
         val KEY_PRE_ADHAN = intPreferencesKey("pre_adhan_minutes")
-        val KEY_ADHKAR_REMINDERS = booleanPreferencesKey("adhkar_reminders_enabled")
+        val KEY_ADHKAR_REMINDERS = stringSetPreferencesKey("adhkar_reminders")
+
+        /** The single switch that preceded [KEY_ADHKAR_REMINDERS]; read once, then removed. */
+        val KEY_ADHKAR_REMINDERS_LEGACY = booleanPreferencesKey("adhkar_reminders_enabled")
         const val NONE_SELECTED = "__none__"
 
         /** An hour is already implausible; the cap only keeps a bad write from rendering absurdly. */
