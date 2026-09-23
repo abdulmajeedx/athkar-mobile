@@ -15,6 +15,7 @@ import com.athkar.app.MainActivity
 import com.athkar.app.R
 import com.athkar.core.prayer.Prayer
 import com.athkar.domain.AlertSound
+import com.athkar.domain.DailyAdhkar
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -142,6 +143,46 @@ class PrayerNotifier @Inject constructor(
             .build()
 
         manager.notify(PRE_ADHAN_NOTIFICATION_ID_BASE + prayer.ordinal, notification)
+    }
+
+    /**
+     * The reminder to read the morning or evening adhkar.
+     *
+     * Quiet like the pre-adhan warning, and on a channel of its own so it can be silenced in the
+     * system settings without touching the prayer alerts. Opens the adhkar tab, where both sets
+     * are the first two chapters.
+     */
+    fun notifyAdhkar(kind: DailyAdhkar) {
+        val manager = notificationManager ?: return
+        ensureChannel(
+            manager = manager,
+            id = CHANNEL_ADHKAR,
+            name = "أذكار الصباح والمساء",
+            description = "تذكير بأذكار الصباح بين الفجر والشروق، وأذكار المساء بين العصر والمغرب",
+            sound = null,
+            importance = NotificationManager.IMPORTANCE_DEFAULT,
+        )
+
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            ADHKAR_REQUEST_CODE + kind.ordinal,
+            Intent(Intent.ACTION_VIEW, ADHKAR_TAB_URI, context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = Notification.Builder(context, CHANNEL_ADHKAR)
+            .setSmallIcon(R.drawable.ic_notification_prayer)
+            .setContentTitle(kind.title)
+            .setContentText(kind.body)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .build()
+
+        // One id for both, so an unread morning reminder is replaced by the evening one rather
+        // than piling up beside it.
+        manager.notify(ADHKAR_NOTIFICATION_ID, notification)
     }
 
     /** Arabic counts its minutes in three forms, and "بقي 2 دقيقة" is not one of them. */
@@ -313,8 +354,10 @@ class PrayerNotifier @Inject constructor(
         const val CHANNEL_DEVICE_ALARM = "prayer_times_device_alarm_v1"
         const val CHANNEL_ADHAN = "prayer_times_adhan_v1"
         const val CHANNEL_WARNING = "prayer_times_warning_v1"
+        const val CHANNEL_ADHKAR = "adhkar_reminders_v1"
         const val LEGACY_SOUNDING_CHANNEL_ID = "prayer_times"
         val PRAYER_TAB_URI: Uri = "athkar://prayer".toUri()
+        val ADHKAR_TAB_URI: Uri = "athkar://adhkar".toUri()
         const val NOTIFICATION_ID_BASE = 4100
         const val PREVIEW_NOTIFICATION_ID = 4150
 
@@ -322,5 +365,7 @@ class PrayerNotifier @Inject constructor(
         const val PRE_ADHAN_NOTIFICATION_ID_BASE = 4160
         const val PRE_ADHAN_REQUEST_CODE = 4300
         const val STOP_REQUEST_CODE = 4200
+        const val ADHKAR_NOTIFICATION_ID = 4180
+        const val ADHKAR_REQUEST_CODE = 4310
     }
 }

@@ -9,6 +9,7 @@ import com.athkar.core.prayer.PolarDayException
 import com.athkar.core.prayer.Prayer
 import com.athkar.core.prayer.PrayerTimes
 import com.athkar.domain.AlertSound
+import com.athkar.domain.DailyAdhkar
 import com.athkar.domain.PrayerPreferences
 import com.athkar.domain.PrayerPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -49,10 +50,7 @@ class PrayerAlarmScheduler @Inject constructor(
         val manager = alarmManager ?: return
         cancelAll(manager)
 
-        if (!preferences.notificationsEnabled) return
         val place = preferences.place ?: return
-        if (preferences.notifiedPrayers.isEmpty()) return
-
         val zone = ZoneId.systemDefault()
         val now = Instant.now()
         val today = LocalDate.now(zone)
@@ -65,42 +63,85 @@ class PrayerAlarmScheduler @Inject constructor(
                 // No sunrise means no derived times to alert on; the screen already explains why.
                 continue
             }
-            for (prayer in preferences.notifiedPrayers) {
-                val at = times.timeFor(prayer)
-
-                // The warning is its own alarm rather than a delayed branch of the prayer's: it
-                // fires before it, so it cannot be derived from an alarm that has not gone off yet.
-                val warnMinutes = preferences.preAdhanMinutes
-                if (warnMinutes > 0) {
-                    val warnAt = at.minus(warnMinutes.toLong(), ChronoUnit.MINUTES)
-                    if (warnAt.isAfter(now)) {
-                        schedule(
-                            manager = manager,
-                            prayer = prayer,
-                            at = warnAt,
-                            dayOffset = dayOffset,
-                            // Never the adhan: the call belongs to the time itself, and raising it
-                            // early would announce a prayer whose time has not come.
-                            sound = AlertSound.SILENT,
-                            placeName = place.name,
-                            minutesBefore = warnMinutes,
-                        )
-                    }
-                }
-
-                if (!at.isAfter(now)) continue
-                schedule(
-                    manager = manager,
-                    prayer = prayer,
-                    at = at,
-                    dayOffset = dayOffset,
-                    // Written into the alarm so the receiver can act on it without waiting on a
-                    // disk read it has no time for. Every settings change reschedules, so what an
-                    // alarm carries is never older than the last change the user made.
-                    sound = preferences.alertSound.forPrayer(prayer),
-                    placeName = place.name,
-                )
+            if (preferences.notificationsEnabled) {
+                schedulePrayers(manager, preferences, times, dayOffset, now, place.name)
             }
+            if (preferences.adhkarRemindersEnabled) {
+                scheduleAdhkar(manager, times, dayOffset, now)
+            }
+        }
+    }
+
+    /**
+     * The morning and evening reminders for one day.
+     *
+     * Registered by the same pass as the prayers, so every event that reschedules those — a
+     * settings change, a reboot, a time-zone change, the alarm firing — keeps these rolling too.
+     */
+    private fun scheduleAdhkar(manager: AlarmManager, times: PrayerTimes, dayOffset: Int, now: Instant) {
+        for (kind in DailyAdhkar.entries) {
+            val at = kind.remindAt(times)
+            if (!at.isAfter(now)) continue
+            val intent = PendingIntent.getBroadcast(
+                context,
+                adhkarRequestCode(kind, dayOffset),
+                adhkarIntent(kind, dayOffset),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            ) ?: continue
+            // Exact when allowed, because the window is the point: the evening one lands in the
+            // last hour before Maghrib, and Doze's batching can hold an inexact alarm past it.
+            val scheduled = canScheduleExactAlarms() && runCatching {
+                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at.toEpochMilli(), intent)
+            }.isSuccess
+            if (!scheduled) {
+                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at.toEpochMilli(), intent)
+            }
+        }
+    }
+
+    private fun schedulePrayers(
+        manager: AlarmManager,
+        preferences: PrayerPreferences,
+        times: PrayerTimes,
+        dayOffset: Int,
+        now: Instant,
+        placeName: String,
+    ) {
+        for (prayer in preferences.notifiedPrayers) {
+            val at = times.timeFor(prayer)
+
+            // The warning is its own alarm rather than a delayed branch of the prayer's: it
+            // fires before it, so it cannot be derived from an alarm that has not gone off yet.
+            val warnMinutes = preferences.preAdhanMinutes
+            if (warnMinutes > 0) {
+                val warnAt = at.minus(warnMinutes.toLong(), ChronoUnit.MINUTES)
+                if (warnAt.isAfter(now)) {
+                    schedule(
+                        manager = manager,
+                        prayer = prayer,
+                        at = warnAt,
+                        dayOffset = dayOffset,
+                        // Never the adhan: the call belongs to the time itself, and raising it
+                        // early would announce a prayer whose time has not come.
+                        sound = AlertSound.SILENT,
+                        placeName = placeName,
+                        minutesBefore = warnMinutes,
+                    )
+                }
+            }
+
+            if (!at.isAfter(now)) continue
+            schedule(
+                manager = manager,
+                prayer = prayer,
+                at = at,
+                dayOffset = dayOffset,
+                // Written into the alarm so the receiver can act on it without waiting on a
+                // disk read it has no time for. Every settings change reschedules, so what an
+                // alarm carries is never older than the last change the user made.
+                sound = preferences.alertSound.forPrayer(prayer),
+                placeName = placeName,
+            )
         }
     }
 
@@ -144,6 +185,19 @@ class PrayerAlarmScheduler @Inject constructor(
 
     private fun cancelAll(manager: AlarmManager) {
         for (dayOffset in 0..LAST_DAY_OFFSET) {
+            // Cancelled whatever the setting says: turning the reminders off must take back the
+            // ones already registered, and the setting is already off by the time this runs.
+            for (kind in DailyAdhkar.entries) {
+                PendingIntent.getBroadcast(
+                    context,
+                    adhkarRequestCode(kind, dayOffset),
+                    adhkarIntent(kind, dayOffset),
+                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+                )?.let {
+                    manager.cancel(it)
+                    it.cancel()
+                }
+            }
             for (prayer in Prayer.entries) {
                 // Both kinds, because a warning the user has just switched off is still pending and
                 // would otherwise fire from a schedule that no longer exists.
@@ -211,6 +265,17 @@ class PrayerAlarmScheduler @Inject constructor(
             putExtra(PrayerAlarmReceiver.EXTRA_MINUTES_BEFORE, minutesBefore)
         }
 
+    private fun adhkarIntent(kind: DailyAdhkar, dayOffset: Int): Intent =
+        Intent(context, AdhkarReminderReceiver::class.java).apply {
+            // Per kind and per day, for the same reason the prayers are: matching ignores extras,
+            // and tomorrow's morning reminder must not replace today's.
+            action = "$ACTION_ADHKAR_REMINDER.${kind.name}.$dayOffset"
+            putExtra(AdhkarReminderReceiver.EXTRA_KIND, kind.name)
+        }
+
+    private fun adhkarRequestCode(kind: DailyAdhkar, dayOffset: Int): Int =
+        ADHKAR_REQUEST_CODE_BASE + dayOffset * DailyAdhkar.entries.size + kind.ordinal
+
     /** Unique per prayer *and* per day, so tomorrow's Fajr does not overwrite today's. */
     private fun requestCode(prayer: Prayer, dayOffset: Int, isWarning: Boolean): Int {
         val base = if (isWarning) WARNING_REQUEST_CODE_BASE else REQUEST_CODE_BASE
@@ -219,6 +284,7 @@ class PrayerAlarmScheduler @Inject constructor(
 
     companion object {
         const val ACTION_PRAYER_ALARM = "com.athkar.app.action.PRAYER_ALARM"
+        const val ACTION_ADHKAR_REMINDER = "com.athkar.app.action.ADHKAR_REMINDER"
 
         /** Today and tomorrow: always at least one pending alarm, however long the app stays closed. */
         private const val LAST_DAY_OFFSET = 1
@@ -226,5 +292,8 @@ class PrayerAlarmScheduler @Inject constructor(
 
         /** Far enough from [REQUEST_CODE_BASE] that the two blocks cannot overlap as days grow. */
         private const val WARNING_REQUEST_CODE_BASE = 7200
+
+        /** Clear of both blocks above, which grow by seven codes per day. */
+        private const val ADHKAR_REQUEST_CODE_BASE = 7300
     }
 }

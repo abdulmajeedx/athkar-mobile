@@ -72,6 +72,11 @@
             android:name=".notifications.PrayerAlarmReceiver"
             android:exported="false" />
 
+        <!-- Fires at the morning and evening adhkar reminders. -->
+        <receiver
+            android:name=".notifications.AdhkarReminderReceiver"
+            android:exported="false" />
+
         <!-- Plays the adhan. Typed mediaPlayback because that is precisely what it does — it
              decodes one audio file to the speaker under a MediaSession, and nothing else. The type
              carries no platform timeout, unlike shortService, whose three-minute cliff sits barely
