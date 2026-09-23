@@ -1,20 +1,14 @@
 name: iOS build & test
 
-# The macOS runner is the only Swift compiler this project has access to, so every push that touches
-# ios/ is compiled and tested here. Nothing below needs an Apple Developer account: simulator builds
-# are unsigned.
+# The macOS runner is the only Swift compiler this project has access to, so this is where ios/ is
+# compiled and tested. Nothing below needs an Apple Developer account: simulator builds are
+# unsigned.
+#
+# Manual only, for now. A macOS minute bills as ten Linux ones, and building on every push to ios/
+# spends the account's Actions allowance fast enough to block the Android release when it runs
+# out. Run it from the Actions tab when iOS work needs checking; restore the push and pull_request
+# triggers once the budget allows.
 on:
-  push:
-    # Branches only: a tag push matches every path filter, so publishing a release used to fire a
-    # full iOS build for a commit already tested on the branch it came from.
-    branches:
-      - main
-    paths:
-      - "ios/**"
-      - ".github/workflows/ios-ci.yml"
-  pull_request:
-    paths:
-      - "ios/**"
   workflow_dispatch:
 
 jobs:
