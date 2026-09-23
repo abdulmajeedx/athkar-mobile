@@ -86,7 +86,7 @@ class PrayerAlarmScheduler @Inject constructor(
         now: Instant,
     ) {
         for (kind in kinds) {
-            val at = kind.remindAt(times)
+            val at = kind.remindAt(times) ?: continue
             if (!at.isAfter(now)) continue
             val intent = PendingIntent.getBroadcast(
                 context,

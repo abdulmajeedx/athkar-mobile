@@ -681,12 +681,13 @@ private fun AdhkarReminderSettings(
     }
 }
 
-/** Today's time when it is known, and the window it falls in either way. */
+/** Today's time when it falls today, and the window it falls in either way. */
 private fun reminderWhen(kind: DailyAdhkar, at: Instant?, zone: ZoneId): String {
     val window = when (kind) {
         DailyAdhkar.MORNING -> "بين الفجر والشروق"
         DailyAdhkar.EVENING -> "بين العصر والمغرب"
         DailyAdhkar.SLEEP -> "بعد العشاء"
+        DailyAdhkar.FRIDAY -> "كل جمعة، بين الشروق والظهر"
     }
     return if (at == null) window else "$window — اليوم ${Formatting.time(at, zone)}"
 }

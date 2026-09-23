@@ -1,11 +1,12 @@
 package com.athkar.domain
 
 import com.athkar.core.prayer.PrayerTimes
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
 
 /**
- * The daily sets the app can remind the user to read.
+ * The sets the app can remind the user to read: three every day, and one on Fridays.
  *
  * Each is anchored to the window the sunnah gives it rather than to a clock time: the morning
  * adhkar belong between Fajr and sunrise, the evening ones between Asr and Maghrib. A fixed
@@ -22,10 +23,25 @@ enum class DailyAdhkar(val title: String, val body: String, val chapterKey: Stri
     MORNING("أذكار الصباح", "حان وقت أذكار الصباح، قبل شروق الشمس", "cat-27m"),
     EVENING("أذكار المساء", "حان وقت أذكار المساء، قبل غروب الشمس", "cat-27e"),
     SLEEP("أذكار النوم", "قبل أن تنام، أذكار النوم", "cat-28"),
+
+    /**
+     * Surah al-Kahf and sending prayers on the Prophet ﷺ, the two acts the sunnah ties to Friday.
+     *
+     * Opens the chapter on the virtue of those prayers. The surah itself is not in the bundle —
+     * Hisn al-Muslim is a book of adhkar, not the mushaf — and Quran text is not something to add
+     * from anywhere but a verified source, so the reminder names it and leaves the reading to the
+     * user's own mushaf.
+     */
+    FRIDAY(
+        "يوم الجمعة",
+        "اقرأ سورة الكهف، وأكثر من الصلاة على النبي ﷺ",
+        "cat-107",
+    ),
     ;
 
     /**
-     * When to remind on the day [times] describes.
+     * When to remind on the day [times] describes, or null when this reminder does not fall on
+     * that day.
      *
      * The midpoint of the window, not its opening: at the opening the user is praying, and
      * a reminder that lands during the prayer is one they swipe away unread. The midpoint also
@@ -36,10 +52,17 @@ enum class DailyAdhkar(val title: String, val body: String, val chapterKey: Stri
      * between Isha and the middle of the night, which is where the night's sleep begins for most
      * people and which, like the others, follows the season instead of a clock.
      */
-    fun remindAt(times: PrayerTimes): Instant = when (this) {
+    fun remindAt(times: PrayerTimes): Instant? = when (this) {
         MORNING -> midpoint(times.fajr, times.sunrise)
         EVENING -> midpoint(times.asr, times.maghrib)
         SLEEP -> midpoint(times.isha, islamicMidnight(times))
+        // Between sunrise and the Friday prayer: the surah is commonly read before it, and a
+        // reminder after Dhuhr would arrive while the user is at the mosque or just back from it.
+        FRIDAY -> if (times.date.dayOfWeek == DayOfWeek.FRIDAY) {
+            midpoint(times.sunrise, times.dhuhr)
+        } else {
+            null
+        }
     }
 
     private fun midpoint(start: Instant, end: Instant): Instant =

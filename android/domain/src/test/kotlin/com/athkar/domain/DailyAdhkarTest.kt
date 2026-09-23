@@ -3,12 +3,14 @@ package com.athkar.domain
 import com.athkar.core.prayer.CalculationMethod
 import com.athkar.core.prayer.Coordinates
 import com.athkar.core.prayer.PrayerTimes
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -29,9 +31,9 @@ class DailyAdhkarTest {
         for (place in listOf(mecca, london)) {
             for (month in 1..12) {
                 val t = times(place, LocalDate.of(2026, month, 15))
-                val morning = DailyAdhkar.MORNING.remindAt(t)
-                val evening = DailyAdhkar.EVENING.remindAt(t)
-                val sleep = DailyAdhkar.SLEEP.remindAt(t)
+                val morning = DailyAdhkar.MORNING.remindAt(t)!!
+                val evening = DailyAdhkar.EVENING.remindAt(t)!!
+                val sleep = DailyAdhkar.SLEEP.remindAt(t)!!
                 val nextFajr = times(place, LocalDate.of(2026, month, 16)).fajr
                 assertTrue(morning.isAfter(t.fajr) && morning.isBefore(t.sunrise), "morning in $month at $place")
                 assertTrue(evening.isAfter(t.asr) && evening.isBefore(t.maghrib), "evening in $month at $place")
@@ -47,7 +49,7 @@ class DailyAdhkarTest {
         val midnight = t.maghrib.plus(Duration.between(t.maghrib, nextFajr).dividedBy(2))
         val expected = t.isha.plus(Duration.between(t.isha, midnight).dividedBy(2))
         // Today's Fajr stands in for tomorrow's; the two are a minute or two apart at most.
-        val drift = Duration.between(expected, DailyAdhkar.SLEEP.remindAt(t)).abs()
+        val drift = Duration.between(expected, DailyAdhkar.SLEEP.remindAt(t)!!).abs()
         assertTrue(drift <= Duration.ofMinutes(1), "drift $drift")
     }
 
@@ -62,8 +64,33 @@ class DailyAdhkarTest {
         val zone = ZoneId.of("America/New_York")
         assertEquals(
             LocalTime.of(5, 25),
-            DailyAdhkar.MORNING.remindAt(t).atZone(zone).toLocalTime().withSecond(0).withNano(0),
+            DailyAdhkar.MORNING.remindAt(t)!!.atZone(zone).toLocalTime().withSecond(0).withNano(0),
         )
+    }
+
+    @Test
+    fun `the Friday reminder comes on Fridays only, between sunrise and Dhuhr`() {
+        // 2026-09-18 is a Friday; the week around it covers every other day once.
+        for (offset in -3L..3L) {
+            val date = LocalDate.of(2026, 9, 18).plusDays(offset)
+            val t = times(mecca, date)
+            val at = DailyAdhkar.FRIDAY.remindAt(t)
+            if (date.dayOfWeek == DayOfWeek.FRIDAY) {
+                assertTrue(at != null && at.isAfter(t.sunrise) && at.isBefore(t.dhuhr), "Friday $date: $at")
+            } else {
+                assertNull(at, "no Friday reminder on ${date.dayOfWeek}")
+            }
+        }
+    }
+
+    @Test
+    fun `the daily reminders come every day of the week`() {
+        for (offset in 0L..6L) {
+            val t = times(london, LocalDate.of(2026, 9, 14).plusDays(offset))
+            for (kind in listOf(DailyAdhkar.MORNING, DailyAdhkar.EVENING, DailyAdhkar.SLEEP)) {
+                assertTrue(kind.remindAt(t) != null, "$kind on ${t.date.dayOfWeek}")
+            }
+        }
     }
 
     @Test

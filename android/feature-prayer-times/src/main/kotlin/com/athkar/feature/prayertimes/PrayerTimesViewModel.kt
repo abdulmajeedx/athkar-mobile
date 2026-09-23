@@ -70,7 +70,10 @@ class PrayerTimesViewModel @Inject constructor(
         val highLatitudeRule: HighLatitudeRule? = null,
         val iqamaMinutes: Map<Prayer, Int> = emptyMap(),
         val adhkarReminders: Set<DailyAdhkar> = emptySet(),
-        /** Today's reminder times, so the switch says when it will speak rather than just that it will. */
+        /**
+         * Today's reminder times, so each switch says when it will speak. Absent for a reminder
+         * that does not fall today — Friday's, on any other day.
+         */
         val adhkarReminderTimes: Map<DailyAdhkar, Instant> = emptyMap(),
         /**
          * Tomorrow's dawn, so the hours after Isha have something to count down to.
@@ -162,7 +165,9 @@ class PrayerTimesViewModel @Inject constructor(
                 method = preferences.method,
                 madhab = preferences.madhab,
                 rows = Prayer.entries.map { PrayerRow(it, times.timeFor(it)) },
-                adhkarReminderTimes = DailyAdhkar.entries.associateWith { it.remindAt(times) },
+                adhkarReminderTimes = DailyAdhkar.entries
+                    .mapNotNull { kind -> kind.remindAt(times)?.let { kind to it } }
+                    .toMap(),
                 hijriDate = Formatting.hijriDate(date),
                 gregorianDate = Formatting.gregorianDate(date),
                 notificationsEnabled = preferences.notificationsEnabled,
