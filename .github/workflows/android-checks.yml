@@ -1,0 +1,50 @@
+name: Android checks
+
+# Lint and the unit tests, on every change to the Android code.
+#
+# Neither ran on a pull request before: the smoke test builds and launches the app, and the release
+# workflow runs the tests only once a version is being cut. Lint ran nowhere at all, which is how
+# two MissingPermission errors sat in :data unnoticed while every module declares abortOnError.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - ".github/workflows/android-checks.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-checks.yml"
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # --continue so one module's lint failure does not hide the next module's, and the tests
+      # still run: a red check should report everything that is wrong, not the first thing.
+      - name: Lint and unit tests
+        working-directory: android
+        run: ./gradlew lintRelease test --continue --console=plain
+
+      - name: Upload the lint reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: android/*/build/reports/lint-results-release.*
+          if-no-files-found: ignore
