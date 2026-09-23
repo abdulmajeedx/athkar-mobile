@@ -1,3 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Declared by the module that calls the location APIs, not only by :app. Lint checks this
+         library against its own manifest, where an undeclared permission reads as one the app can
+         never hold, and the SecurityException handlers around each call do not answer that. The
+         merged manifest is unchanged: :app already requests the same coarse permission. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>
